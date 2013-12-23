@@ -48,7 +48,12 @@ class ErrorHandler {
 			return;
 		}
 		$msg = $message . ' at ' . $file . '#' . $line;
-		self::$logger->warning($msg, array('app' => 'PHP'));
-
+		if(is_object(self::$logger)) {
+			self::$logger->warning($msg, array('app' => 'PHP'));
+		}
+		else {
+			echo "$msg";
+			exit;
+		}
 	}
 }

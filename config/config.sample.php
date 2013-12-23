@@ -190,6 +190,28 @@ $CONFIG = array(
  */
 // "datadirectory" => "",
 
+/* For Replication, please set the datadirectory to ocrfs:
+ */
+"datadirectory" => "ocrfs:///",
+
+/* Path to real datadirectory. The directory where the user data is stored, default to data in the owncloud
+ * directory.
+ */
+"replicationdatadirectory" => ".../data",
+
+/* Local-Server-Url for the replication
+ */
+
+"replicationurl" => "https://self.owncloud.url/",
+
+/* Type of replication
+ * - Master, the Master distribute all Files to all other instances
+ * - Slave, communicate only with one of Master's
+ * - Client, the Client has no Data, all Data are on the Master
+ */
+"replicationtype" => 'master',
+
+
 /* Enable maintenance mode to disable ownCloud
    If you want to prevent users to login to ownCloud before you start doing some maintenance work,
    you need to set the value of the maintenance parameter to true.

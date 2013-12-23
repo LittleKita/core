@@ -486,6 +486,8 @@ class OC {
 			}
 		}
 
+		stream_wrapper_register('ocrfs', 'OC\Files\Stream\ocrfs');
+
 		if (!defined('PHPUNIT_RUN')) {
 			if (defined('DEBUG') and DEBUG) {
 				set_exception_handler(array('OC_Template', 'printExceptionErrorPage'));
