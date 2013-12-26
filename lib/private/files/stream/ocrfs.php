@@ -8,59 +8,99 @@
 
 namespace OC\Files\Stream;
 
+use OC\OCRFS\Manager;
+
 /**
  * a stream wrappers for ownCloud's virtual filesystem
  */
 class OCRFS {
-	protected static $datadirectory = NULL;
-
-	protected static function setup() {
-		if(self::$datadirectory === NULL) {
-			self::$datadirectory = \OC_Config::getValue("realdatadirectory", \OC::$SERVERROOT . '/data');
-			if(substr(self::$datadirectory,-1) !== "/") {
-				self::$datadirectory .= "/";
-			}
-		}
-	}
-
-	public function __construct() {
-		self::setup();
+	const FS_SHEME = "ocrfs://";
+	protected $fileSource = null;
+	protected $sc = null;
+	
+	public static function init() {
+	    echo "init";
 	}
 
 	public function getRealPath($path) {
-		self::setup();
-		$rpath = self::$datadirectory.substr($path, strlen('ocrfs://'));
+		$rpath = substr($path, strlen(self::FS_SHEME));
 		while(strpos($rpath,"//") !== false) {
 			$rpath = str_replace("//","/",$rpath);
 		}
 		return $rpath;
 	}
+	
+	public function directAccess($path) {
+	    $dirname = dirname($path);
+	    if(!$dirname || $dirname == "/") {
+	        return true;
+	    }
+	    return false;
+	}
 
-	public function stream_open($path, $mode, $options, &$opened_path) {
-		$path = $this->getRealPath($path);
-		$this->fileSource = fopen($path, $mode);
-		if (is_resource($this->fileSource)) {
-			$this->meta = stream_get_meta_data($this->fileSource);
+	public function stream_open($_path, $mode, $options, &$opened_path) {
+		$path = $this->getRealPath($_path);
+	    if($this->directAccess($path)) {
+	        $this->fileSource = fopen(Manager::getInstance()->getDataDirectory() . "/" . $path, $mod);
+	        $this->meta = stream_get_meta_data($this->fileSource);
+	        return is_resource($this->fileSource);
+	    }
+	    error_log("stream_open $_path $mode");
+		$bin = strpos($mode,"b") !== false ? "b" : "";
+		
+		if($mode == "r$bin") {
+		    if(Manager::getInstance()->isClient()) {
+    		    $this->sc = Manager::getInstance()->getRandomMaster(array("-1"));
+		    }
+		    else {
+    		    $this->sc = Manager::getInstance()->getLocal();
+		    }
 		}
-		return is_resource($this->fileSource);
+		else {
+		    if(Manager::getInstance()->isMaster()) {
+    		    $this->sc = Manager::getInstance()->getCollection();
+		    }
+		    else {
+    		    $this->sc = Manager::getInstance()->getRandomMaster();
+		    }
+		}
+		$this->fileSource = $this->sc->fopen($path, $mode);
+
+		if ($this->fileSource) {
+			$this->meta = $this->sc->getMetaData($this->fileSource);
+		}
+		return $this->fileSource > 0 ? true : false;
 	}
 
 	public function stream_seek($offset, $whence = SEEK_SET) {
-		fseek($this->fileSource, $offset, $whence);
+	    if(is_resource($this->fileSource)) {
+	        return fseek($this->fileSource, $offset, $whence);
+	    }
+		return $this->sc->fseek($this->fileSource, $offset, $whence);
 	}
 
 	public function stream_tell() {
-		return ftell($this->fileSource);
+	    if(is_resource($this->fileSource)) {
+	        return ftell($this->fileSource);
+	    }
+		return $this->sc->ftell($this->fileSource);
 	}
 
 	public function stream_read($count) {
-		return fread($this->fileSource, $count);
+	    if(is_resource($this->fileSource)) {
+	        return fread($this->fileSource, $count);
+	    }
+		return $this->sc->fread($this->fileSource, $count);
 	}
 
 	public function stream_write($data) {
-		return fwrite($this->fileSource, $data);
+	    if(is_resource($this->fileSource)) {
+	        return fwrite($this->fileSource, $data);
+	    }
+		return $this->sc->fwrite($this->fileSource, $data);
 	}
 
+    /*
 	public function stream_set_option($option, $arg1, $arg2) {
 		switch ($option) {
 			case STREAM_OPTION_BLOCKING:
@@ -73,60 +113,135 @@ class OCRFS {
 				stream_set_write_buffer($this->fileSource, $arg1, $arg2);
 		}
 	}
+	*/
+	
+	public function stream_get_meta_data() {
+	    return $this->meta;
+	}
+	
+	function stream_metadata($_path, $option, $var) {
+        if($option == STREAM_META_TOUCH) {
+            $path = $this->getRealPath($_path);
+		    if(Manager::getInstance()->isMaster()) {
+    		    $this->sc = Manager::getInstance()->getCollection();
+		    }
+		    else {
+    		    $this->sc = Manager::getInstance()->getRandomMaster();
+		    }
+		    $args = array($path);
+		    for($i=0;$i<count($var) && is_array($var);$i++) {
+		        $args[] = $var[$i];
+		    }
+	        error_log("stream_touch($_path, ".print_r($var, true).")");
+            return call_user_func_array(array($this->sc,"touch"),$args);
+        }
+        return false;
+    }
 
 	public function stream_stat() {
-		return fstat($this->fileSource);
+	    if(is_resource($this->fileSource)) {
+	        return fstat($this->fileSource);
+	    }
+		return $this->sc->fstat($this->fileSource);
 	}
 
 	public function stream_lock($mode) {
-		flock($this->fileSource, $mode);
+	    if(is_resource($this->fileSource)) {
+	        return flock($this->fileSource,$mode);
+	    }
+		$this->sc->flock($this->fileSource, $mode);
 	}
 
 	public function stream_flush() {
-		return fflush($this->fileSource);
+	    if(is_resource($this->fileSource)) {
+	        return flush($this->fileSource);
+	    }
+		return $this->sc->fflush($this->fileSource);
 	}
 
 	public function stream_eof() {
-		return feof($this->fileSource);
+	    if(is_resource($this->fileSource)) {
+	        return feof($this->fileSource);
+	    }
+		return $this->sc->feof($this->fileSource);
 	}
 
-	public function url_stat($path) {
-		$path = $this->getRealPath($path);
-		if (file_exists($path)) {
-			return stat($path);
-		} else {
-			return false;
-		}
+	public function url_stat($_path) {
+		$path = $this->getRealPath($_path);
+		$tpath = Manager::getInstance()->getDataDirectory() . "/" . $path;
+	    if($this->directAccess($path) && !is_dir($tpath)) {
+	        if(file_exists($tpath)) {
+	            return stat($tpath);
+	        }
+	        else {
+	            return false;
+	        }
+	    }
+	    $this->sc = Manager::getInstance()->getLocal();
+		return $this->sc->url_stat($path);
 	}
 
 	public function stream_close() {
-		fclose($this->fileSource);
+	    if(is_resource($this->fileSource)) {
+	        return fclose($this->fileSource);
+	    }
+		return $this->sc->fclose($this->fileSource);
 	}
 
 	public function unlink($path) {
 		$path = $this->getRealPath($path);
-		return unlink($path);
+	    if(Manager::getInstance()->isMaster()) {
+		    $this->sc = Manager::getInstance()->getCollection();
+	    }
+	    else {
+		    $this->sc = Manager::getInstance()->getRandomMaster();
+	    }
+		return $this->sc->unlink($path);
 	}
 
 	public function dir_opendir($path, $options) {
 		$path = $this->getRealPath($path);
-		$this->path = $path;
-		$this->dirSource = opendir($path);
-		if (is_resource($this->dirSource)) {
-			$this->meta = stream_get_meta_data($this->dirSource);
+		
+	    $this->sc = Manager::getInstance()->getLocal();
+
+		if ($this->dirSource = $this->sc->opendir($path)) {
+			$this->meta = $this->sc->getMetaData($this->dirSource);
+			return true;
 		}
-		return is_resource($this->dirSource);
+		return false;
 	}
 
 	public function dir_readdir() {
-		return readdir($this->dirSource);
+		return $this->sc->readdir($this->dirSource);
 	}
 
 	public function dir_closedir() {
-		closedir($this->dirSource);
+		return $this->sc->closedir($this->dirSource);
 	}
 
 	public function dir_rewinddir() {
-		rewinddir($this->dirSource);
+		return $this->sc->rewinddir($this->dirSource);
+	}
+
+	public function mkdir($path) {
+		$path = $this->getRealPath($path);
+	    if(Manager::getInstance()->isMaster()) {
+		    $this->sc = Manager::getInstance()->getCollection();
+	    }
+	    else {
+		    $this->sc = Manager::getInstance()->getRandomMaster();
+	    }
+		return $this->sc->mkdir($path);
+	}
+	
+	public function rmdir($path) {
+		$path = $this->getRealPath($path);
+	    if(Manager::getInstance()->isMaster()) {
+		    $this->sc = Manager::getInstance()->getCollection();
+	    }
+	    else {
+		    $this->sc = Manager::getInstance()->getRandomMaster();
+	    }
+		return $this->sc->rmdir($path);
 	}
 }
