@@ -145,6 +145,12 @@ class OCRFS {
         }
         return false;
     }
+    
+    public function disk_free_space($_path) {
+        $path = $this->getRealPath($_path);
+        
+        return @\disk_free_space($path);
+    }
 
 	public function stream_stat() {
 	    if(is_resource($this->fileSource)) {

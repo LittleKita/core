@@ -972,12 +972,12 @@ if(!function_exists("_touch")) {
 
 if(!function_exists("_disk_free_space")) {
 	function _disk_free_space($path) {
-		if(class_exists("\OC\Files\Stream\OCRFS") && substr(strtolower($filename),0,strlen(\OC\Files\Stream\OCRFS::FS_SHEME)) == strtolower(\OC\Files\Stream\OCRFS::FS_SHEME)) {
+		if(class_exists("\OC\Files\Stream\OCRFS") && substr(strtolower($path),0,strlen(\OC\Files\Stream\OCRFS::FS_SHEME)) == strtolower(\OC\Files\Stream\OCRFS::FS_SHEME)) {
 			$fs = new OC\Files\Stream\OCRFS();
-			return $fs->disk_total_space($path);
+			return $fs->disk_free_space($path);
 		}
 		else {
-			return @disk_total_space($path);
+			return @disk_free_space($path);
 		}
 	}
 }
