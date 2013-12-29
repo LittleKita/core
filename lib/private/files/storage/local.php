@@ -35,7 +35,7 @@ if (\OC_Util::runningOnWindows()) {
 		}
 
 		public function mkdir($path) {
-			return @mkdir($this->datadir . $path);
+			return mkdir($this->datadir . $path);
 		}
 
 		public function rmdir($path) {
@@ -135,9 +135,9 @@ if (\OC_Util::runningOnWindows()) {
 				return false;
 			}
 			if (!is_null($mtime)) {
-				$result = touch($this->datadir . $path, $mtime);
+				$result = _touch($this->datadir . $path, $mtime);
 			} else {
-				$result = touch($this->datadir . $path);
+				$result = _touch($this->datadir . $path);
 			}
 			if ($result) {
 				clearstatcache(true, $this->datadir . $path);
@@ -255,7 +255,7 @@ if (\OC_Util::runningOnWindows()) {
 		}
 
 		public function free_space($path) {
-			$space = @disk_free_space($this->datadir . $path);
+			$space = _disk_free_space($this->datadir . $path);
 			if ($space === false) {
 				return \OC\Files\SPACE_UNKNOWN;
 			}

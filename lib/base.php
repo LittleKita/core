@@ -956,5 +956,30 @@ if (!function_exists('get_temp_dir')) {
 	}
 }
 
-OC::init();
+if(!function_exists("_touch")) {
+	define("STREAM_META_TOUCH",1);
 
+	function _touch($filename, $time = null, $atime = null) {
+		if(class_exists("\OC\Files\Stream\OCRFS") && substr(strtolower($filename),0,strlen(\OC\Files\Stream\OCRFS::FS_SHEME)) == strtolower(\OC\Files\Stream\OCRFS::FS_SHEME)) {
+			$fs = new \OC\Files\Stream\OCRFS();
+			return $fs->stream_metadata($filename, STREAM_META_TOUCH, array($time,$atime));
+		}
+		else {
+			return call_user_func_array("touch", func_get_args());
+		}
+	}
+}
+
+if(!function_exists("_disk_free_space")) {
+	function _disk_free_space($path) {
+		if(class_exists("\OC\Files\Stream\OCRFS") && substr(strtolower($filename),0,strlen(\OC\Files\Stream\OCRFS::FS_SHEME)) == strtolower(\OC\Files\Stream\OCRFS::FS_SHEME)) {
+			$fs = new OC\Files\Stream\OCRFS();
+			return $fs->disk_total_space($path);
+		}
+		else {
+			return @disk_total_space($path);
+		}
+	}
+}
+
+OC::init();
