@@ -99,10 +99,15 @@ class SCRemote implements StateCacheRFS {
 				}
 				if($line === "\r\n") {
 				    $msg = $this->serverId."\tContent";
-				    if($contentLength > 0) {
-    					while(!feof($fp)) {
-    						$data .= fread($fp,1024);
-    					}
+				    if($contentLength >= 0) {
+				        if($contentLength > 0) {
+				            $len = $contentLength;
+        					while(!feof($fp) && $len > 0) {
+        					    $tmp = fread($fp,min(1024, $len));
+        					    $len -= strlen($tmp);
+        						$data .= $tmp;
+        					}
+				        }
 
         				if(strpos($contentType,"application/octet-stream") !== false) {
         			        $msg .= ": DATA";
@@ -160,7 +165,7 @@ class SCRemote implements StateCacheRFS {
 		}
 	}
 
-    public function fopen($path,$mode) {
+    public function fopen($path,$mode,$onlyLocal = false) {
         return $this->callRemoteServer("fopen", array("path" => $path, "mode" => $mode));
     }
 
@@ -188,7 +193,7 @@ class SCRemote implements StateCacheRFS {
         return $this->callRemoteServer("fclose", array("id" => $id));
     }
     
-    public function opendir($path) {
+    public function opendir($path,$onlyLocal = false) {
         return $this->callRemoteServer("opendir", array("path" => $path));
     }
 

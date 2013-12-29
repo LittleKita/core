@@ -6,9 +6,6 @@ class SCLocal implements StateCacheRFS {
     protected $datadirectory;
     protected $cache;
     
-    protected static $oldErrorHandler = null;
-    protected static $oldExceptionHandler = null;
-    
     public function __construct($serverId, $datadirectory) {
         $this->serverId = $serverId;
         $this->datadirectory = $datadirectory;
@@ -37,7 +34,7 @@ class SCLocal implements StateCacheRFS {
     }
     
     protected function checkLTime($id) {
-        if($this->cache[$id]["ltime"]+10 < time()) {
+        if(!$this->cache[$id]["local"] && $this->cache[$id]["ltime"]+10 < time()) {
             $query = \OCP\DB::prepare("UPDATE *PREFIX*freplicate set ltime=? WHERE freplicate_id=? AND server_id=?");
             $query->execute(array(time(),$id,$this->serverId));
             $this->cache[$id]["ltime"] = time();
@@ -93,20 +90,6 @@ class SCLocal implements StateCacheRFS {
         	$query->execute(array($seek,time(),$id,$this->serverId));
         }
     }
-    
-    public function exceptionHandler(\Exception $e) {
-        error_log($e->getMessage());
-        if(self::$oldExceptionHandler != null) {
-            call_user_func_array(self::$oldExceptionHandler, func_get_args());
-        }
-    }
-
-    public function errorHandler($errno , $errstr , $errfile = null, $errline = null, $errcontext = null) {
-        error_log($errfile.":".$errline." ($errno)$errstr");
-        if(self::$oldErrorHandler != null) {
-            call_user_func_array(self::$oldErrorHandler, func_get_args());
-        }
-    }
 
     public function fopen($path,$mode,$onlyLocal = false) {
         error_log($this->serverId."\tSCLocal::fopen($path,$mode) datadirectory=".$this->datadirectory);
@@ -118,7 +101,7 @@ class SCLocal implements StateCacheRFS {
             if($onlyLocal) {
                 while(array_key_exists($id = mt_rand(), $this->cache)) {
                 }
-                $this->cache[$id] = array("fp" => $fp, "path" => $path, "seek" => $seek, "mode" => $mode, "local" => true, "ltime" => time());
+                $this->cache[$id] = array("fp" => $fp, "path" => $path, "seek" => $seek, "mode" => $mode, "serverId" => $this->serverId, "local" => true, "ltime" => time());
                 return $id;
             }
             // StateLess 
@@ -159,7 +142,20 @@ class SCLocal implements StateCacheRFS {
     
     public function feof($id) {
         $fpinfo = $this->getFPInfo($id);
-        return feof($fpinfo["fp"]);
+        $feof = feof($fpinfo["fp"]);
+        if(!$feof) {
+            $seek = ftell($fpinfo["fp"]);
+            if($seek == $fpinfo["seek"]) {
+                fseek($fpinfo["fp"], 0, SEEK_END);
+                if($seek === ftell($fpinfo["fp"])) {
+                    $feof = true;
+                }
+                else {
+                    fseek($fpinfo["fp"], $seek, SEEK_SET);
+                }
+            }
+        }
+        return $feof;
     }
     
     public function fflush($id) {
@@ -191,7 +187,7 @@ class SCLocal implements StateCacheRFS {
             if($onlyLocal) {
                 while(array_key_exists($id = mt_rand(), $this->cache)) {
                 }
-                $this->cache[$id] = array("fp" => $fp, "path" => $path, "seek" => $seek, "mode" => $mode, "local" => true);
+                $this->cache[$id] = array("fp" => $fp, "path" => $path, "seek" => $seek, "mode" => $mode, "serverId" => $this->serverId, "local" => true, "ltime" => time());
                 return $id;
             }
             // StateLess 

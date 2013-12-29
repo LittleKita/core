@@ -7,7 +7,7 @@ interface StateCacheRFS {
     
     public function checkPath($path);
 
-    public function fopen($path,$mode);
+    public function fopen($path,$mode,$onlyLocal = false);
     public function fread($fp,$size);
     public function fwrite($fp,$data);
     public function fstat($fp);
@@ -15,7 +15,7 @@ interface StateCacheRFS {
     public function fflush($fp);
     public function fclose($fp);
 
-    public function opendir($path);
+    public function opendir($path,$onlyLocal = false);
     public function readdir($fp);
     public function rewinddir($fp);
     public function closedir($fp);

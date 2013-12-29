@@ -77,7 +77,7 @@ class OCRFS {
 		else {
 		    $this->sc = $this->getCollection(false);
 		}
-		$this->fileSource = $this->sc->fopen($path, $mode);
+		$this->fileSource = $this->sc->fopen($path, $mode, true);
 
 		if ($this->fileSource) {
 			$this->meta = $this->sc->getMetaData($this->fileSource);
@@ -221,7 +221,7 @@ class OCRFS {
 		
 		$this->sc = $this->getCollection(true);
 
-		if ($this->dirSource = $this->sc->opendir($path)) {
+		if ($this->dirSource = $this->sc->opendir($path, true)) {
 			$this->meta = $this->sc->getMetaData($this->dirSource);
 			return true;
 		}

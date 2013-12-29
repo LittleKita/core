@@ -17,7 +17,7 @@ class SCCollection implements StateCacheRFS {
         $this->cache = array();
         
         if($row != null) {
-            $this->cache[$row["freplicate_id"]] = array("fp" => null, "path" => $row["path"], "seek" => $row["seek"], "mode" => $row["mode"], "ltime" => $row["ltime"]);
+            $this->cache[$row["freplicate_id"]] = array("fp" => null, "path" => $row["path"], "seek" => $row["seek"], "mode" => $row["mode"], "local" => false, "ltime" => $row["ltime"]);
             $this->checkLTime($row["freplicate_id"]);
         }
     }
@@ -36,7 +36,7 @@ class SCCollection implements StateCacheRFS {
     }
     
     protected function checkLTime($id) {
-        if($this->cache[$id]["ltime"]+10 < time()) {
+        if(!$this->cache[$id]["local"] && $this->cache[$id]["ltime"]+10 < time()) {
             $query = \OCP\DB::prepare("UPDATE *PREFIX*freplicate set ltime=? WHERE freplicate_id=? AND server_id=?");
             $query->execute(array(time(),$id,$this->serverId));
             $this->cache[$id]["ltime"] = time();
@@ -91,7 +91,7 @@ class SCCollection implements StateCacheRFS {
         return $res;
     }
     
-    public function fopen($path,$mode) {
+    public function fopen($path,$mode,$onlyLocal = false) {
         $tmode = str_replace("b","",$mode);
         if(strpos($tmode,"+")) {
             throw new Exception("Collection paralel read/write not implemented.");
@@ -103,16 +103,24 @@ class SCCollection implements StateCacheRFS {
         $seek = -1;
         $path = $this->callAll($this->collection,"fopen", func_get_args());
 
-		$query = \OCP\DB::prepare("INSERT INTO *PREFIX*freplicate (`path`,`seek`,`mode`,`server_id`,`ltime`) VALUES (?,?,?,?,?)");
-		if($result = $query->execute(array(serialize($path),$seek,$mode,$this->serverId,time()))) {
-    	    $id = \OCP\DB::insertid();
-    	    if(is_numeric($id)) {
-    	        $id = $id/1;
-    	    }
-//	        error_log("insert: " . $result . " id: " . $id);
-    	    $this->cache[$id] = array("fp" => null, "path" => $path, "seek" => $seek, "mode" => $mode, "ltime" => time());
-			return $id;
-		}
+        if($onlyLocal) {
+                while(array_key_exists($id = mt_rand(), $this->cache)) {
+                }
+                $this->cache[$id] = array("fp" => null, "path" => $path, "seek" => $seek, "mode" => $mode, "local" => true, "ltime" => time());
+                return $id;
+        }
+        else {
+    		$query = \OCP\DB::prepare("INSERT INTO *PREFIX*freplicate (`path`,`seek`,`mode`,`server_id`,`ltime`) VALUES (?,?,?,?,?)");
+    		if($result = $query->execute(array(serialize($path),$seek,$mode,$this->serverId,time()))) {
+        	    $id = \OCP\DB::insertid();
+        	    if(is_numeric($id)) {
+        	        $id = $id/1;
+        	    }
+    //	        error_log("insert: " . $result . " id: " . $id);
+        	    $this->cache[$id] = array("fp" => null, "path" => $path, "seek" => $seek, "mode" => $mode, "local" => false, "ltime" => time());
+    			return $id;
+    		}
+        }
         return null;
     }
     
@@ -145,7 +153,7 @@ class SCCollection implements StateCacheRFS {
         return true;
     }
     
-    public function opendir($path) {
+    public function opendir($path,$onlyLocal = false) {
         throw new Exception("Collection read not implemented.");
     }
 

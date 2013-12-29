@@ -34,7 +34,7 @@ class Manager {
     	
     	// Alle fileHandles die aelter als 60 Sekunden sind loeschen:
     	$query = \OCP\DB::prepare("DELETE FROM *PREFIX*freplicate WHERE ltime<?");
-    	if(false && $query->execute(array(time()-60))) {
+    	if(false && $query->execute(array(time()-360))) {
         	$query = \OCP\DB::prepare("SELECT count(*) AS c FROM *PREFIX*freplicate");
         	$result = $query->execute(array());
         	$count = -1;
