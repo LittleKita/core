@@ -224,7 +224,6 @@ class SCRemote implements StateCacheRFS {
     }
 
     public function mkdir($path) {
-        Helper::logTrace();
         return $this->callRemoteServer("mkdir", array("path" => $path));
     }
     
