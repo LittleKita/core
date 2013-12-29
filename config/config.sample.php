@@ -199,11 +199,6 @@ $CONFIG = array(
  */
 "replicationdatadirectory" => ".../data",
 
-/* Local-Server-Url for the replication
- */
-
-"replicationurl" => "https://self.owncloud.url/",
-
 /* Type of replication
  * - Master, the Master distribute all Files to all other instances
  * - Slave, communicate only with one of Master's
