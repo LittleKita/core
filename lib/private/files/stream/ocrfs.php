@@ -24,9 +24,11 @@ class OCRFS {
 
 	public function getRealPath($path) {
 		$rpath = substr($path, strlen(self::FS_SHEME));
+/*
 		while(strpos($rpath,"//") !== false) {
 			$rpath = str_replace("//","/",$rpath);
 		}
+*/
 		return $rpath;
 	}
 	
@@ -37,6 +39,27 @@ class OCRFS {
 	    }
 	    return false;
 	}
+	
+	protected function getCollection($readOnly) {
+	    if($readOnly) {
+		    if(Manager::getInstance()->isClient()) {
+    		    $this->sc = Manager::getInstance()->getRandomMaster();
+		    }
+		    else {
+    		    $this->sc = Manager::getInstance()->getLocal();
+		    }
+	    }
+	    else {
+		    if(Manager::getInstance()->isMaster()) {
+    		    $this->sc = Manager::getInstance()->getCollection(array(), -1);
+		    }
+		    else {
+    		    $this->sc = Manager::getInstance()->getRandomMaster();
+		    }
+	    }
+	    
+	    return $this->sc;
+	}
 
 	public function stream_open($_path, $mode, $options, &$opened_path) {
 		$path = $this->getRealPath($_path);
@@ -45,24 +68,14 @@ class OCRFS {
 	        $this->meta = stream_get_meta_data($this->fileSource);
 	        return is_resource($this->fileSource);
 	    }
-	    error_log("stream_open $_path $mode");
+//	    error_log("stream_open $_path $mode");
 		$bin = strpos($mode,"b") !== false ? "b" : "";
 		
 		if($mode == "r$bin") {
-		    if(Manager::getInstance()->isClient()) {
-    		    $this->sc = Manager::getInstance()->getRandomMaster(array("-1"));
-		    }
-		    else {
-    		    $this->sc = Manager::getInstance()->getLocal();
-		    }
+		    $this->sc = $this->getCollection(true);
 		}
 		else {
-		    if(Manager::getInstance()->isMaster()) {
-    		    $this->sc = Manager::getInstance()->getCollection();
-		    }
-		    else {
-    		    $this->sc = Manager::getInstance()->getRandomMaster();
-		    }
+		    $this->sc = $this->getCollection(false);
 		}
 		$this->fileSource = $this->sc->fopen($path, $mode);
 
@@ -122,12 +135,7 @@ class OCRFS {
 	function stream_metadata($_path, $option, $var) {
         if($option == STREAM_META_TOUCH) {
             $path = $this->getRealPath($_path);
-		    if(Manager::getInstance()->isMaster()) {
-    		    $this->sc = Manager::getInstance()->getCollection();
-		    }
-		    else {
-    		    $this->sc = Manager::getInstance()->getRandomMaster();
-		    }
+		    $this->sc = $this->getCollection(true);
 		    $args = array($path);
 		    for($i=0;$i<count($var) && is_array($var);$i++) {
 		        $args[] = $var[$i];
@@ -171,14 +179,22 @@ class OCRFS {
 		$tpath = Manager::getInstance()->getDataDirectory() . "/" . $path;
 	    if($this->directAccess($path) && !is_dir($tpath)) {
 	        if(file_exists($tpath)) {
-	            return stat($tpath);
+	            $res = stat($tpath);
 	        }
 	        else {
 	            return false;
 	        }
 	    }
-	    $this->sc = Manager::getInstance()->getLocal();
-		return $this->sc->url_stat($path);
+	    else {
+		    $this->sc = $this->getCollection(true);
+    	    $res = $this->sc->url_stat($path);
+	    }
+	    
+	    if(is_array($res) && array_key_exists("uri", $res)) {
+	        $res["uri"] = self::FS_SHEME.$res["uri"];
+	    }
+
+		return $res; 
 	}
 
 	public function stream_close() {
@@ -190,19 +206,14 @@ class OCRFS {
 
 	public function unlink($path) {
 		$path = $this->getRealPath($path);
-	    if(Manager::getInstance()->isMaster()) {
-		    $this->sc = Manager::getInstance()->getCollection();
-	    }
-	    else {
-		    $this->sc = Manager::getInstance()->getRandomMaster();
-	    }
+	    $this->sc = $this->getCollection(false);
 		return $this->sc->unlink($path);
 	}
 
 	public function dir_opendir($path, $options) {
 		$path = $this->getRealPath($path);
 		
-	    $this->sc = Manager::getInstance()->getLocal();
+		$this->sc = $this->getCollection(true);
 
 		if ($this->dirSource = $this->sc->opendir($path)) {
 			$this->meta = $this->sc->getMetaData($this->dirSource);
@@ -225,23 +236,13 @@ class OCRFS {
 
 	public function mkdir($path) {
 		$path = $this->getRealPath($path);
-	    if(Manager::getInstance()->isMaster()) {
-		    $this->sc = Manager::getInstance()->getCollection();
-	    }
-	    else {
-		    $this->sc = Manager::getInstance()->getRandomMaster();
-	    }
+		$this->sc = $this->getCollection(false);
 		return $this->sc->mkdir($path);
 	}
 	
 	public function rmdir($path) {
 		$path = $this->getRealPath($path);
-	    if(Manager::getInstance()->isMaster()) {
-		    $this->sc = Manager::getInstance()->getCollection();
-	    }
-	    else {
-		    $this->sc = Manager::getInstance()->getRandomMaster();
-	    }
+		$this->sc = $this->getCollection(false);
 		return $this->sc->rmdir($path);
 	}
 }

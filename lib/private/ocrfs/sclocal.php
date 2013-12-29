@@ -6,24 +6,54 @@ class SCLocal implements StateCacheRFS {
     protected $datadirectory;
     protected $cache;
     
+    protected static $oldErrorHandler = null;
+    protected static $oldExceptionHandler = null;
+    
     public function __construct($serverId, $datadirectory) {
         $this->serverId = $serverId;
         $this->datadirectory = $datadirectory;
         $this->cache = array();
+        
+        \OC\TryCatch::dummy();
     }
     
+    public function setRM($rm) {
+    }
+
     public function getServerId() {
         return $this->serverId;
+    }
+    
+    public function checkPath($path) {
+        $dirname = explode("/", dirname($path));
+        $curPath = $this->datadirectory;
+        for($i=0;$i<count($dirname);$i++) {
+            $curPath .= $dirname[$i]."/";
+            if(!file_exists($curPath)) {
+                error_log("checkPath-mkdir: " . $curPath);
+                mkdir($curPath);
+            }
+        }
+    }
+    
+    protected function checkLTime($id) {
+        if($this->cache[$id]["ltime"]+10 < time()) {
+            $query = \OCP\DB::prepare("UPDATE *PREFIX*freplicate set ltime=? WHERE freplicate_id=? AND server_id=?");
+            $query->execute(array(time(),$id,$this->serverId));
+            $this->cache[$id]["ltime"] = time();
+        }
     }
 
     protected function &getFPInfo($id) {
         if(array_key_exists($id,$this->cache)) {
+            $this->checkLTime($id);
             return $this->cache[$id];
         }
 
 		$query = \OCP\DB::prepare("SELECT * FROM *PREFIX*freplicate WHERE freplicate_id=? AND server_id=?");
         if($result = $query->execute(array($id,$this->serverId))) {
             while($row = $result->fetchRow()) {
+                $row["local"] = false;
                 $bin = strpos($row["mode"],"b") !== false ? "b" : "";
 
                 if($row["mode"] == "d") {
@@ -46,6 +76,7 @@ class SCLocal implements StateCacheRFS {
             }
 
             if(array_key_exists($id,$this->cache)) {
+                $this->checkLTime($id);
                 return $this->cache[$id];
             }
         }
@@ -58,36 +89,53 @@ class SCLocal implements StateCacheRFS {
         $this->cache[$id]["seek"] = $seek;
 
         if(!$this->cache[$id]["local"]) {
-        	$query = \OCP\DB::prepare("UPDATE *PREFIX*freplicate set seek=? WHERE freplicate_id=? AND server_id=?");
-        	$query->execute(array($seek,$id,$this->serverId));
+        	$query = \OCP\DB::prepare("UPDATE *PREFIX*freplicate set seek=?, ltime=? WHERE freplicate_id=? AND server_id=?");
+        	$query->execute(array($seek,time(),$id,$this->serverId));
         }
     }
     
-    public function fopen($path,$mode,$onlyLocal = false) {
-        error_log("SCLocal::fopen($path,$mode) datadirectory=".$this->datadirectory);
+    public function exceptionHandler(\Exception $e) {
+        error_log($e->getMessage());
+        if(self::$oldExceptionHandler != null) {
+            call_user_func_array(self::$oldExceptionHandler, func_get_args());
+        }
+    }
 
-        $fp = fopen($this->datadirectory."/".$path, $mode);
+    public function errorHandler($errno , $errstr , $errfile = null, $errline = null, $errcontext = null) {
+        error_log($errfile.":".$errline." ($errno)$errstr");
+        if(self::$oldErrorHandler != null) {
+            call_user_func_array(self::$oldErrorHandler, func_get_args());
+        }
+    }
+
+    public function fopen($path,$mode,$onlyLocal = false) {
+        error_log($this->serverId."\tSCLocal::fopen($path,$mode) datadirectory=".$this->datadirectory);
+
+        \OC\tryCatch()->c($fp = fopen($this->datadirectory."/".$path, $mode));
         if(is_resource($fp)) {
             $seek = ftell($fp);
             // Nur lokales FS, kein StateLess
             if($onlyLocal) {
                 while(array_key_exists($id = mt_rand(), $this->cache)) {
                 }
-                $this->cache[$id] = array("fp" => $fp, "path" => $path, "seek" => $seek, "mode" => $mode, "local" => true);
+                $this->cache[$id] = array("fp" => $fp, "path" => $path, "seek" => $seek, "mode" => $mode, "local" => true, "ltime" => time());
                 return $id;
             }
             // StateLess 
             else {
-	    		$query = \OCP\DB::prepare("INSERT INTO *PREFIX*freplicate (`path`,`seek`,`mode`,`server_id`) VALUES (?,?,?,?)");
-    			if($result = $query->execute(array($path,$seek,$mode,$this->serverId))) {
+	    		$query = \OCP\DB::prepare("INSERT INTO *PREFIX*freplicate (`path`,`seek`,`mode`,`server_id`,`ltime`) VALUES (?,?,?,?,?)");
+    			if($result = $query->execute(array($path,$seek,$mode,$this->serverId,time()))) {
 		    	    $id = \OCP\DB::insertid();
-			        error_log("insert: " . $result . " id: " . $id);
-		    	    $this->cache[$id] = array("fp" => $fp, "path" => $path, "seek" => $seek, "mode" => $mode, "serverId" => $this->serverId, "local" => false);
+    			    if(is_numeric($id)) {
+    			        $id = $id/1;
+    			    }
+//			        error_log("insert: " . $result . " id: " . $id);
+		    	    $this->cache[$id] = array("fp" => $fp, "path" => $path, "seek" => $seek, "mode" => $mode, "serverId" => $this->serverId, "local" => false, "ltime" => time());
         			return $id;
     			}
             }
         }
-        return null;
+        return false;
     }
 
     public function fread($id,$size) {
@@ -126,14 +174,14 @@ class SCLocal implements StateCacheRFS {
 	    	$query->execute(array($id,$this->serverId));
         }
         $res = fclose($fpinfo["fp"]);
-        error_log("SCLocal::fclose(".$fpinfo["path"].") datadirectory=".$this->datadirectory.", id=".$id);
+        error_log($this->serverId."\tSCLocal::fclose(".$fpinfo["path"].") datadirectory=".$this->datadirectory.", id=".$id);
         unset($this->cache[$id]);
         return $res;
     }
     
     public function opendir($path,$onlyLocal = false) {
-        error_log("SCLocal::opendir($path) datadirectory=".$this->datadirectory);
-        $fp = opendir($this->datadirectory."/".$path);
+        error_log($this->serverId."\tSCLocal::opendir($path) datadirectory=".$this->datadirectory);
+        \OC\tryCatch()->c($fp = opendir($this->datadirectory."/".$path));
         $mode = "d";
         $seek = 0;
 
@@ -148,11 +196,14 @@ class SCLocal implements StateCacheRFS {
             }
             // StateLess 
             else {
-	    		$query = \OCP\DB::prepare("INSERT INTO *PREFIX*freplicate (`path`,`seek`,`mode`,`server_id`) VALUES (?,?,?,?)");
-    			if($result = $query->execute(array($path,$seek,$mode,$this->serverId))) {
+	    		$query = \OCP\DB::prepare("INSERT INTO *PREFIX*freplicate (`path`,`seek`,`mode`,`server_id`,`ltime`) VALUES (?,?,?,?,?)");
+    			if($result = $query->execute(array($path,$seek,$mode,$this->serverId,time()))) {
 		    	    $id = \OCP\DB::insertid();
-			        error_log("insert: " . $result . " id: " . $id);
-		    	    $this->cache[$id] = array("fp" => $fp, "path" => $path, "seek" => $seek, "mode" => $mode, "serverId" => $this->serverId, "local" => false);
+            	    if(is_numeric($id)) {
+            	        $id = $id/1;
+            	    }
+//			        error_log("insert: " . $result . " id: " . $id);
+		    	    $this->cache[$id] = array("fp" => $fp, "path" => $path, "seek" => $seek, "mode" => $mode, "serverId" => $this->serverId, "local" => false, "ltime" => time());
         			return $id;
     			}
             }
@@ -162,8 +213,11 @@ class SCLocal implements StateCacheRFS {
 
     public function readdir($id) {
         $fpinfo = $this->getFPInfo($id);
-        $res = readdir($fpinfo["fp"]);
-        $this->updateSeek($id,$this->cache[$id]["seek"]+1);
+        $seekp = 1;
+        while(($res = readdir($fpinfo["fp"])) === ".ocrfs") {
+            $seekp++;
+        }
+        $this->updateSeek($id,$this->cache[$id]["seek"]+$seekp);
         return $res;
     }
 
@@ -181,7 +235,7 @@ class SCLocal implements StateCacheRFS {
     		$query->execute(array($id,$this->serverId));
         }
         $res = closedir($fpinfo["fp"]);
-        error_log("SCLocal::closedir(".$fpinfo["path"].") datadirectory=".$this->datadirectory.", id=".$id);
+        error_log($this->serverId."\tSCLocal::closedir(".$fpinfo["path"].") datadirectory=".$this->datadirectory.", id=".$id);
         unset($this->cache[$id]);
         return $res;
     }
@@ -189,11 +243,18 @@ class SCLocal implements StateCacheRFS {
     
     public function getMetaData($id) {
         $fpinfo = $this->getFPInfo($id);
-        return stream_get_meta_data($fpinfo["fp"]);
+        $res = stream_get_meta_data($fpinfo["fp"]);
+        if(array_key_exists("uri", $res)) {
+            $res["uri"] = substr($res["uri"], strlen($this->datadirectory));
+            if(substr($res["uri"],0,1) !== "/") {
+                $res["uri"] = "/".$res["uri"];
+            }
+        }
+        return $res;
     }
     
     public function url_stat($_path) {
-        $msg = "SCLocal::url_stat($_path) datadirectory=".$this->datadirectory;
+        $msg = $this->serverId."\tSCLocal::url_stat($_path) datadirectory=".$this->datadirectory;
         $path = $this->datadirectory."/".$_path;
         if(file_exists($path)) {
             $stat = stat($path);
@@ -206,7 +267,7 @@ class SCLocal implements StateCacheRFS {
     }
     
     public function touch($_path, $time = null, $atime = null) {
-        $msg = "SCLocal::touch($_path, $time, $atime) datadirectory=".$this->datadirectory;
+        $msg = $this->serverId."\tSCLocal::touch($_path, $time, $atime) datadirectory=".$this->datadirectory;
         $path = $this->datadirectory."/".$_path;
 
         $args = array($path);
@@ -216,7 +277,7 @@ class SCLocal implements StateCacheRFS {
         if($atime > 0) {
             $args[]= $atime;
         }
-        $res = call_user_func_array("touch", $args);
+        \OC\tryCatch()->c($res = call_user_func_array("touch", $args));
         error_log($msg." = ".$res);
         return $res;
     }
@@ -224,25 +285,25 @@ class SCLocal implements StateCacheRFS {
     public function mkdir($_path) {
         $path = $this->datadirectory."/".$_path;
         if(!file_exists($path)) {
-            return mkdir($path);
+            return \OC\tryCatch()->c(mkdir($path));
         }
         return false;
     }
 
     public function unlink($_path) {
-        error_log("SCLocal::unlink($_path) datadirectory=".$this->datadirectory);
+        error_log($this->serverId."\tSCLocal::unlink($_path) datadirectory=".$this->datadirectory);
         $path = $this->datadirectory."/".$_path;
         if(file_exists($path)) {
-            return unlink($path);
+            return \OC\tryCatch()->c(unlink($path));
         }
         return false;
     }
     
     public function rmdir($_path) {
-        error_log("SCLocal::rmdir($_path) datadirectory=".$this->datadirectory);
+        error_log($this->serverId."\tSCLocal::rmdir($_path) datadirectory=".$this->datadirectory);
         $path = $this->datadirectory."/".$_path;
         if(file_exists($path)) {
-            return rmdir($path);
+            return \OC\tryCatch()->c(rmdir($path));
         }
         return false;
     }

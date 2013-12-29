@@ -2,7 +2,10 @@
 namespace OC\OCRFS;
 
 interface StateCacheRFS {
+    public function setRM($rm);
     public function getServerId();
+    
+    public function checkPath($path);
 
     public function fopen($path,$mode);
     public function fread($fp,$size);
@@ -22,7 +25,7 @@ interface StateCacheRFS {
     
     public function touch($path, $time = null, $atime = null);
     public function mkdir($path);
-    
+
     public function unlink($path);
     public function rmdir($path);
 };

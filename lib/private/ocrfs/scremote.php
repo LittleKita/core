@@ -6,16 +6,33 @@ class SCRemote implements StateCacheRFS {
     protected $url;
     protected $type;
     protected $secret;
+    protected $rm;
 
-    public function __construct($id, $url, $type, $secret) {
+    public function __construct($id, $url, $type, $secret, $rm) {
         $this->serverId = $id;
         $this->url = $url;
         $this->type = $type;
         $this->secret = $secret;
+        if(!$rm/1) {
+            throw new \Exception("Wrong rm($rm).");
+        }
+        $this->rm = $rm;
+    }
+    
+    public function setRM($rm) {
+        if(!$rm/1) {
+            throw new \Exception("Wrong rm($rm).");
+        }
+        $oldRM = $this->rm;
+        $this->rm = $rm;
+        return $oldRM;
     }
     
     public function getServerId() {
         return $this->serverId;
+    }
+    
+    public function checkPath($path) {
     }
 
     public function getType() {
@@ -23,6 +40,7 @@ class SCRemote implements StateCacheRFS {
     }
 
     public function callRemoteServer($operation,$arguments = array(),$data = NULL) {
+        $msg = "SCRemote::callRemoteServer($operation,".serialize($arguments).") serverId=".$this->serverId;
 		$url = parse_url($this->url);
 		$errno = NULL;
 		$errstr = NULL;
@@ -38,6 +56,8 @@ class SCRemote implements StateCacheRFS {
 			if(!array_key_exists("port", $url)) $url["port"] = 80;
 			$remote = "tcp:/"."/".$url["host"].":".$url["port"];
 		}
+		
+		$arguments["rm"] = $this->rm;
 
 		$fp = stream_socket_client($remote, $errno, $errstr, 10, STREAM_CLIENT_CONNECT, $context);
 		if(is_resource($fp)) {
@@ -48,60 +68,94 @@ class SCRemote implements StateCacheRFS {
 			$request = "POST ".$url["path"]."/index.php/apps/ocrfs/$operation";
 			$request = str_replace("/"."/","/",$request);
 			$request = "$request$query HTTP/1.0";
-			error_log(self::$replicationserverid."\tRequest: ".$url["host"].": ".trim($request));
+			error_log($this->serverId."\tRequest: ".$url["host"].": ".trim($request));
+//			error_log(print_r($arguments, true));
 			fwrite($fp,"$request\r\n");
 			fwrite($fp,"Host: ".$url["host"]."\r\n");
 			fwrite($fp,"Content-Length: ".strlen($data)."\r\n");
+			fwrite($fp,"Connection: close\r\n");
+
 			fwrite($fp,"\r\n");
 			if($data !== NULL) {
 				fwrite($fp,$data);
+				error_log($this->serverId."\tData(".strlen($data).")");
 			}
 
+            $http = 0;
 			$contentType = "";
+			$contentLength = -1;
 			$data = "";
 			while(!feof($fp)) {
 				$line = fgets($fp,1024);
-				error_log(self::$replicationserverid."\tHeader: ".trim($line));
-				$contentType = "";
-				if(substr($line,0,strlen("Content-Type:")) === "Content-Type:") {
+//				error_log($this->serverId."\tHeader: ".trim($line));
+				if($http === 0) {
+				    list($null,$http) = explode(" ", $line);
+				}
+				else if(substr($line,0,strlen("Content-Type:")) === "Content-Type:") {
 				    $contentType = trim(substr($line,strlen("Content-Type:")));
 				}
+				else if(substr($line,0,strlen("Content-Length:")) === "Content-Length:") {
+				    $contentLength = trim(substr($line,strlen("Content-Length:")));
+				}
 				if($line === "\r\n") {
-					while(!feof($fp)) {
-						$data .= fread($fp,1024);
-					}
-					error_log(self::$replicationserverid."\tData: ".trim($data));
-					break;
-				}
-				
-				if(strpos($contentType,"application/octet-stream") !== false) {
-				}
-				else if(strpos($contentType,"application/json") !== false) {
-				    $data = json_decode($data, true);
-				}
-				else if(strpos($contentType,"singletype") !== false) {
-				    if($data === "f") {
-				        $data = false;
-				    }
-				    else if($data === "t") {
-				        $data = true;
-				    }
-				    else if($data === "n") {
-				        $data = null;
+				    $msg = $this->serverId."\tContent";
+				    if($contentLength > 0) {
+    					while(!feof($fp)) {
+    						$data .= fread($fp,1024);
+    					}
+
+        				if(strpos($contentType,"application/octet-stream") !== false) {
+        			        $msg .= ": DATA";
+    				    }
+    				    else if(strpos($contentType,"application/json") !== false) {
+    			    	    $data = json_decode($data, true);
+    		    	        $msg .= ": JSON";
+    	    			}
+        				else if(strpos($contentType,"singletype") !== false) {
+        				    if($data === "f") {
+    				            $msg .= ": false";
+    			    	        $data = false;
+    		    		    }
+    	    			    else if($data === "t") {
+        				        $msg .= ": true";
+        				        $data = true;
+    				        }
+    				        else if($data === "n") {
+    			    	        $msg .= ": null";
+    		    		        $data = null;
+    	    			    }
+        				    else {
+        				        $data = $data/1;
+    				            $msg .= ": $data";
+    				        }
+    			    	}
+    		    		else {
+    		    		    if(strlen($data) > 100) {
+    		    		        $data = substr($data,0,97)."...";
+    		    		    }
+    	    			    error_log($msg." http: $http, Unknonw data($contentLength): ".$data);
+        				    throw new \Exception($data);
+        				}
 				    }
 				    else {
-				        $data = $data/1;
+	    			    error_log($msg." http: $http, Unknonw data($contentLength)");
+    				    throw new \Exception($data);
 				    }
-				}
-				else {
-				    error_log("Unknonw data: ".$data);
-				    throw new \Exception($data);
+				    
+				    if($http != "200") {
+				        error_log($msg." http: $http");
+    				    throw new \Exception("http: ".$http);
+				    }
+
+    				break;
 				}
 			}
 			fclose($fp);
+			error_log($msg);
 			return $data;
 		}
 		else {
+		    error_log($msg.": ERR");
 			return false;
 		}
 	}
@@ -131,7 +185,7 @@ class SCRemote implements StateCacheRFS {
     }
 
     public function fclose($id) {
-        return $this->callRemoteServer("fwrite", array("id" => $id));
+        return $this->callRemoteServer("fclose", array("id" => $id));
     }
     
     public function opendir($path) {
@@ -170,6 +224,7 @@ class SCRemote implements StateCacheRFS {
     }
 
     public function mkdir($path) {
+        Helper::logTrace();
         return $this->callRemoteServer("mkdir", array("path" => $path));
     }
     
@@ -178,6 +233,6 @@ class SCRemote implements StateCacheRFS {
     }
 
     public function rmdir($path) {
-        return $this->callRemoteServer("unlink", array("path" => $path));
+        return $this->callRemoteServer("rmdir", array("path" => $path));
     }
 };
