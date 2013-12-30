@@ -25,9 +25,9 @@ namespace OCA\OCRFS;
 
 \OC::$CLASSPATH['OCA\OCRFS\Controller\PlainResponse'] = 'ocrfs/plainresponse.php';
 
-
-
 \OCP\App::registerAdmin('ocrfs', 'admin/settings');
+
+\OCP\Backgroundjob::registerJob('\OC\OCRFS\BackgroudSync');
 
 /*
 \OCP\App::addNavigationEntry( array(
