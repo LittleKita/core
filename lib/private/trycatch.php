@@ -1,6 +1,8 @@
 <?php
 namespace OC;
 
+use OC\OCRFS\Manager;
+
 class TryCatch implements TryCatchHandler {
     protected $oldErrorHandler = null;
     protected $oldExceptionHandler = null;
@@ -13,7 +15,8 @@ class TryCatch implements TryCatchHandler {
     }
     
     public function exceptionHandler(\Exception $e) {
-        error_log($e->getMessage());
+        $id = Manager::getInstance()->getReplicationServerId();
+        error_log($id."\t".$e->getMessage());
         $call = true;
         if($this->catcher != null) {
             $call = call_user_func_array(array($this->catcher, "exceptionHandler"), func_get_args());
@@ -24,7 +27,8 @@ class TryCatch implements TryCatchHandler {
     }
 
     public function errorHandler($errno , $errstr , $errfile = null, $errline = null, $errcontext = null) {
-        error_log($errfile.":".$errline." ($errno)$errstr");
+        $id = Manager::getInstance()->getReplicationServerId();
+        error_log($id."\t".$errfile.":".$errline." ($errno)$errstr");
         $call = true;
         if($this->catcher != null) {
             $call = call_user_func_array(array($this->catcher, "errorHandler"), func_get_args());

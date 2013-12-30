@@ -165,8 +165,23 @@ class SCRemote implements StateCacheRFS {
 		}
 	}
 
-    public function fopen($path,$mode,$onlyLocal = false) {
-        return $this->callRemoteServer("fopen", array("path" => $path, "mode" => $mode));
+    public function fopen($path,$mode,$onlyLocal = false, $data = null, $close = false, $time = null, $atime = null) {
+        $args = array("path" => $path, "mode" => $mode);
+        if($data !== null) {
+            if($close) {
+                $args["close"] = 1;
+                if($time !== null) {
+                    $args["time"] = $time;
+                    if($atime !== null) {
+                        $args["atime"] = $atime;
+                    }
+                }
+            }
+            return $this->callRemoteServer("fopen", $args, $data);
+        }
+        else {
+            return $this->callRemoteServer("fopen", $args);
+        }
     }
 
     public function fread($id,$size) {
@@ -186,11 +201,18 @@ class SCRemote implements StateCacheRFS {
     }
 
     public function fflush($id) {
-        return $this->callRemoteServer("fflush", array("id" => $id));
+        return true;//$this->callRemoteServer("fflush", array("id" => $id));
     }
 
-    public function fclose($id) {
-        return $this->callRemoteServer("fclose", array("id" => $id));
+    public function fclose($id, $time = null, $atime = null) {
+        $args = array("id" => $id);
+        if($time !== null) {
+            $args["time"] = $time;
+            if($atime !== null) {
+                $args["atime"] = $atime;
+            }
+        }
+        return $this->callRemoteServer("fclose", $args);
     }
     
     public function opendir($path,$onlyLocal = false) {
@@ -198,7 +220,7 @@ class SCRemote implements StateCacheRFS {
     }
 
     public function readdir($id) {
-        return $this->callRemoteServer("fread", array("id" => $id));
+        return $this->callRemoteServer("readdir", array("id" => $id));
     }
 
     public function rewinddir($id) {

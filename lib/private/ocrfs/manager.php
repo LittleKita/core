@@ -11,6 +11,8 @@ class Manager {
 	protected $replicationServer = null;
     
 	protected $localServer = null;
+	
+	protected $rand = null;
 
     protected function __construct() {
 		$this->dataDirectory = \OC_Config::getValue("replicationdatadirectory", \OC::$SERVERROOT . '/data');
@@ -54,6 +56,10 @@ class Manager {
         return $this->dataDirectory;
     }
     
+    public function getReplicationServerId() {
+        return $this->replicationServerId;
+    }
+    
     public static function getInstance() {
         if(self::$instance == null) {
             self::$instance = new Manager();
@@ -75,17 +81,23 @@ class Manager {
     }
 
     public function getRandomMaster($ignore = array()) {
-        $col = array();
-        foreach($this->replicationServer AS $server) {
-            if(!in_array($server->getServerId(),$ignore) && $server->getType() == "master") {
-                $col[] = $server;
+        if($this->rand == null || count($ignore) > 0) {
+            $col = array();
+            foreach($this->replicationServer AS $server) {
+                if(!in_array($server->getServerId(),$ignore) && $server->getType() == "master") {
+                    $col[] = $server;
+                }
             }
+            
+            $this->rand = $col[mt_rand(0,count($col)-1)];
+            return $this->rand;
         }
-        
-        return $col[mt_rand(0,count($col)-1)];
+        else {
+            return $this->rand;
+        }
     }
 
-    public function getCollection($ignore, $rm) {
+    public function getCollection($ignore) {
         $col = array();
 
         if(!in_array($this->replicationServerId,$ignore)) {
@@ -93,16 +105,12 @@ class Manager {
         }
 
         foreach($this->replicationServer AS $server) {
-            if(!in_array($server->getServerId(),$ignore)) {
+            if(!in_array($server->getServerId(),$ignore) && $server->getType() != "client") {
                 $col[] = $server;
             }
         }
         
-        if($rm == 0) {
-            $rm = $this->replicationServerId;
-        }
-        
-        return new SCCollection($this->replicationServerId, $col, $rm);
+        return new SCCollection($this->replicationServerId, $col, -1);
     }
     
     public function getCollectionById($id) {

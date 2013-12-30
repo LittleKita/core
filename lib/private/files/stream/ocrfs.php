@@ -9,13 +9,17 @@
 namespace OC\Files\Stream;
 
 use OC\OCRFS\Manager;
-
+use OC\OCRFS\Helper;
 /**
  * a stream wrappers for ownCloud's virtual filesystem
  */
 class OCRFS {
 	const FS_SHEME = "ocrfs://";
 	protected $fileSource = null;
+	protected $mode = null;
+	protected $path = null;
+	protected $buffer = "";
+	protected $wait = false;
 	protected $sc = null;
 	
 	public static function init() {
@@ -40,6 +44,12 @@ class OCRFS {
 	    return false;
 	}
 	
+	public function ignorePath($path) {
+	    $array = array("mount.php", "mount.json");
+	    $fname = basename($path);
+	    return (in_array($fname, $array));
+	}
+	
 	protected function getCollection($readOnly) {
 	    if($readOnly) {
 		    if(Manager::getInstance()->isClient()) {
@@ -51,7 +61,7 @@ class OCRFS {
 	    }
 	    else {
 		    if(Manager::getInstance()->isMaster()) {
-    		    $this->sc = Manager::getInstance()->getCollection(array(), -1);
+    		    $this->sc = Manager::getInstance()->getCollection(array());
 		    }
 		    else {
     		    $this->sc = Manager::getInstance()->getRandomMaster();
@@ -71,24 +81,37 @@ class OCRFS {
 //	    error_log("stream_open $_path $mode");
 		$bin = strpos($mode,"b") !== false ? "b" : "";
 		
+		$this->wait = false;
 		if($mode == "r$bin") {
 		    $this->sc = $this->getCollection(true);
 		}
 		else {
 		    $this->sc = $this->getCollection(false);
+		    if(strpos($mode,"+") === false) {
+		        $this->wait = true;
+		    }
 		}
-		$this->fileSource = $this->sc->fopen($path, $mode, true);
+		
+	    $this->path = $path;
+	    $this->mode = $mode;
 
-		if ($this->fileSource) {
-			$this->meta = $this->sc->getMetaData($this->fileSource);
+		if(!$this->wait) {
+    		$this->fileSource = $this->sc->fopen($path, $mode, true);
+		    if ($this->fileSource) {
+		    	$this->meta = $this->sc->getMetaData($this->fileSource);
+	    	}
+    		return $this->fileSource > 0 ? true : false;
 		}
-		return $this->fileSource > 0 ? true : false;
+		else {
+		    return true;
+		}
 	}
 
 	public function stream_seek($offset, $whence = SEEK_SET) {
 	    if(is_resource($this->fileSource)) {
 	        return fseek($this->fileSource, $offset, $whence);
 	    }
+        $this->sendBuffer();
 		return $this->sc->fseek($this->fileSource, $offset, $whence);
 	}
 
@@ -96,6 +119,7 @@ class OCRFS {
 	    if(is_resource($this->fileSource)) {
 	        return ftell($this->fileSource);
 	    }
+        $this->sendBuffer();
 		return $this->sc->ftell($this->fileSource);
 	}
 
@@ -105,10 +129,39 @@ class OCRFS {
 	    }
 		return $this->sc->fread($this->fileSource, $count);
 	}
+	
+	protected function sendBuffer($close = false) {
+	    if($this->wait) {
+	        $this->wait = false;
+	        if($close) {
+	            $this->fileSource = $this->sc->fopen($this->path, $this->mode, true, $this->buffer, true, time(), time());
+	        }
+	        else {
+    	        $this->fileSource = $this->sc->fopen($this->path, $this->mode, true, $this->buffer);
+    		    if ($this->fileSource) {
+    		    	$this->meta = $this->sc->getMetaData($this->fileSource);
+    	    	}
+	        }
+	    }
+	    else if(strlen($this->buffer) > 0) {
+	        $this->sc->fwrite($this->fileSource, $this->buffer);
+        }
+        $this->buffer = "";
+	}
 
 	public function stream_write($data) {
 	    if(is_resource($this->fileSource)) {
 	        return fwrite($this->fileSource, $data);
+	    }
+	    if($this->wait) {
+	        $post_max_size = ((int)(str_replace('M', '', ini_get('post_max_size')))) * 1024 * 1024 / 2;
+	        
+	        $this->buffer .= $data;
+	        if(strlen($this->buffer) >= $post_max_size) {
+	            error_log("buffer full ".strlen($this->buffer)." >= ".$post_max_size);
+	            $this->sendBuffer();
+	        }
+	        return strlen($data);
 	    }
 		return $this->sc->fwrite($this->fileSource, $data);
 	}
@@ -129,6 +182,7 @@ class OCRFS {
 	*/
 	
 	public function stream_get_meta_data() {
+        $this->sendBuffer();
 	    return $this->meta;
 	}
 	
@@ -140,15 +194,13 @@ class OCRFS {
 		    for($i=0;$i<count($var) && is_array($var);$i++) {
 		        $args[] = $var[$i];
 		    }
-	        error_log("stream_touch($_path, ".print_r($var, true).")");
             return call_user_func_array(array($this->sc,"touch"),$args);
         }
         return false;
     }
     
     public function disk_free_space($_path) {
-        $path = $this->getRealPath($_path);
-        
+        $path = Manager::getInstance()->getDataDirectory()."/".$this->getRealPath($_path);
         return @\disk_free_space($path);
     }
 
@@ -156,6 +208,7 @@ class OCRFS {
 	    if(is_resource($this->fileSource)) {
 	        return fstat($this->fileSource);
 	    }
+        $this->sendBuffer();
 		return $this->sc->fstat($this->fileSource);
 	}
 
@@ -163,24 +216,32 @@ class OCRFS {
 	    if(is_resource($this->fileSource)) {
 	        return flock($this->fileSource,$mode);
 	    }
-		$this->sc->flock($this->fileSource, $mode);
+        $this->sendBuffer();
+		return $this->sc->flock($this->fileSource, $mode);
 	}
 
 	public function stream_flush() {
 	    if(is_resource($this->fileSource)) {
 	        return flush($this->fileSource);
 	    }
-		return $this->sc->fflush($this->fileSource);
+	    if(!$this->wait) {
+            $this->sendBuffer();
+    		return $this->sc->fflush($this->fileSource);
+	    }
 	}
 
 	public function stream_eof() {
 	    if(is_resource($this->fileSource)) {
 	        return feof($this->fileSource);
 	    }
+        $this->sendBuffer();
 		return $this->sc->feof($this->fileSource);
 	}
 
 	public function url_stat($_path) {
+	    if($this->ignorePath($_path)) {
+	        return false;
+	    }
 		$path = $this->getRealPath($_path);
 		$tpath = Manager::getInstance()->getDataDirectory() . "/" . $path;
 	    if($this->directAccess($path) && !is_dir($tpath)) {
@@ -207,13 +268,27 @@ class OCRFS {
 	    if(is_resource($this->fileSource)) {
 	        return fclose($this->fileSource);
 	    }
-		return $this->sc->fclose($this->fileSource);
+	    if($this->wait) {
+	        $this->sendBuffer(true);
+	        return true;
+	    }
+	    
+	    $bin = strpos($this->mode,"b") !== false ? "b" : "";
+		
+		if($this->mode != "r$bin" || strpos($this->mode,"+") !== false) {
+    		return $this->sc->fclose($this->fileSource, time(), time());
+		}
+		else {
+    		return $this->sc->fclose($this->fileSource);
+		}
 	}
 
 	public function unlink($path) {
 		$path = $this->getRealPath($path);
 	    $this->sc = $this->getCollection(false);
-		return $this->sc->unlink($path);
+	    $res = $this->sc->unlink($path);
+	    error_log("OCRFS::unlink($path) = ".($res ? "true" : "false"));
+		return $res;
 	}
 
 	public function dir_opendir($path, $options) {
@@ -249,6 +324,8 @@ class OCRFS {
 	public function rmdir($path) {
 		$path = $this->getRealPath($path);
 		$this->sc = $this->getCollection(false);
-		return $this->sc->rmdir($path);
+		$res = $this->sc->rmdir($path);
+	    error_log("OCRFS::rmdir($path) = ".($res ? "true" : "false"));
+		return $res;
 	}
 }

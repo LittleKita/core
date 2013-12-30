@@ -54,20 +54,24 @@ class SCLocal implements StateCacheRFS {
                 $bin = strpos($row["mode"],"b") !== false ? "b" : "";
 
                 if($row["mode"] == "d") {
-                    $fp = opendir($this->datadirectory."/".$row["path"]);
-                    for($i=0;$i<count($row);$i++) {
-                        if(readdir($fp) === false) {
-                            break;
+                    \OC\tryCatch()->c($fp = opendir($this->datadirectory."/".$row["path"]));
+                    if(is_resource($fp)) {
+                        for($i=0;$i<$row["seek"];$i++) {
+                            if(readdir($fp) === false) {
+                                break;
+                            }
                         }
                     }
                 }
-                else if($row["mode"] == "r$bin") {
-                    $fp = fopen($this->datadirectory."/".$row["path"], "r$bin");
-                }
                 else {
-                    $fp = fopen($this->datadirectory."/".$row["path"], "c$bin");
+                    if($row["mode"] == "r$bin") {
+                        $fp = fopen($this->datadirectory."/".$row["path"], "r$bin");
+                    }
+                    else {
+                        $fp = fopen($this->datadirectory."/".$row["path"], "c$bin");
+                    }
+                    fseek($fp, $row["seek"]);
                 }
-                fseek($fp, $row["seek"]);
                 $row["fp"] = $fp;
                 $this->cache[$id] = $row;
             }
@@ -91,11 +95,30 @@ class SCLocal implements StateCacheRFS {
         }
     }
 
-    public function fopen($path,$mode,$onlyLocal = false) {
+    public function fopen($path,$mode,$onlyLocal = false, $data = null, $close = false, $time = null, $atime = null) {
         error_log($this->serverId."\tSCLocal::fopen($path,$mode) datadirectory=".$this->datadirectory);
 
         \OC\tryCatch()->c($fp = fopen($this->datadirectory."/".$path, $mode));
         if(is_resource($fp)) {
+            if($data !== null) {
+                error_log($this->serverId."\tfast with data(".strlen($data).") close: ".($close*1));
+                if(fwrite($fp, $data) != strlen($data)) {
+                    fclose($fp);
+                    return false;
+                }
+                else if($close) {
+                    $res = fclose($fp);
+                    if($res && $time !== null) {
+                        $args = array($this->datadirectory."/".$path, $time);
+                        if($atime !== null) {
+                            $args[] = $atime;
+                        }
+                        error_log("touch ".print_r($args, true));
+                        call_user_func_array("touch", $args);
+                    }
+                    return $res;
+                }
+            }
             $seek = ftell($fp);
             // Nur lokales FS, kein StateLess
             if($onlyLocal) {
@@ -163,13 +186,23 @@ class SCLocal implements StateCacheRFS {
         return fflush($fpinfo["fp"]);
     }
 
-    public function fclose($id) {
+    public function fclose($id, $time = null, $atime = null) {
         $fpinfo = $this->getFPInfo($id);
         if(!$this->cache[$id]["local"]) {
     	    $query = \OCP\DB::prepare("DELETE FROM *PREFIX*freplicate WHERE freplicate_id=? AND server_id=?");
 	    	$query->execute(array($id,$this->serverId));
         }
         $res = fclose($fpinfo["fp"]);
+        
+        if($res && $time !== null) {
+            $args = array($this->datadirectory."/".$fpinfo["path"], $time);
+            if($atime !== null) {
+                $args[] = $atime;
+            }
+            error_log("touch ".print_r($args, true));
+            call_user_func_array("touch", $args);
+        }
+        
         error_log($this->serverId."\tSCLocal::fclose(".$fpinfo["path"].") datadirectory=".$this->datadirectory.", id=".$id);
         unset($this->cache[$id]);
         return $res;
@@ -230,7 +263,7 @@ class SCLocal implements StateCacheRFS {
 	    	$query = \OCP\DB::prepare("DELETE FROM *PREFIX*freplicate WHERE freplicate_id=? AND server_id=?");
     		$query->execute(array($id,$this->serverId));
         }
-        $res = closedir($fpinfo["fp"]);
+        \OC\tryCatch()->c($res = closedir($fpinfo["fp"]));
         error_log($this->serverId."\tSCLocal::closedir(".$fpinfo["path"].") datadirectory=".$this->datadirectory.", id=".$id);
         unset($this->cache[$id]);
         return $res;

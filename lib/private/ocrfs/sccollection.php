@@ -78,7 +78,7 @@ class SCCollection implements StateCacheRFS {
             }
             
             if($single) {
-                $res = array_pop($res);
+                $res = array_key_exists($this->serverId,$res) ? $res[$this->serverId] : array_pop($res);
             }
         }
         else {
@@ -87,11 +87,15 @@ class SCCollection implements StateCacheRFS {
                 $res[$serverId] = call_user_func_array(array($sc,$func), $args);
                 $sc->setRM($oldRM);
             }
+
+            if($single) {
+                $res = array_key_exists($this->serverId,$res) ? $res[$this->serverId] : array_pop($res);
+            }
         }
         return $res;
     }
     
-    public function fopen($path,$mode,$onlyLocal = false) {
+    public function fopen($path,$mode,$onlyLocal = false, $data = null, $close = false, $time = null, $atime = null) {
         $tmode = str_replace("b","",$mode);
         if(strpos($tmode,"+")) {
             throw new Exception("Collection paralel read/write not implemented.");
@@ -101,7 +105,11 @@ class SCCollection implements StateCacheRFS {
         }
         
         $seek = -1;
-        $path = $this->callAll($this->collection,"fopen", func_get_args());
+        $path = $this->callAll($this->collection,"fopen", func_get_args(), $close);
+        
+        if($close) {
+            return $path;
+        }
 
         if($onlyLocal) {
                 while(array_key_exists($id = mt_rand(), $this->cache)) {
@@ -144,7 +152,7 @@ class SCCollection implements StateCacheRFS {
         return $this->callAll($id,"fflush", func_get_args(), true);
     }
 
-    public function fclose($id) {
+    public function fclose($id, $time = null, $atime = null) {
         $this->callAll($id,"fclose", func_get_args());
 
 		$query = \OCP\DB::prepare("DELETE FROM *PREFIX*freplicate WHERE freplicate_id=? AND server_id=?");

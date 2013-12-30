@@ -3,6 +3,31 @@ declare(ticks=1);
 namespace OC\OCRFS;
 
 class Helper {
+    public static function normalizePath($path) {
+        $isRoot = substr($path,0,1) === "/";
+        $isDir = substr($path,-1) === "/";
+		$path = explode("/", $path);
+		$npath = array();
+
+		for($i=0;$i<count($path);$i++) {
+		    if($path[$i] == "..") {
+		        array_pop($npath);
+		    }
+		    else if($path[$i] == "." || $path[$i] === "") {
+		    }
+		    else {
+		        $npath[] = $path[$i];
+		    }
+		}
+		
+		$path = ($isRoot ? "/" : "") . implode("/",$npath);
+		if($isDir && substr($path,-1) != "/" || strlen($path) == 0) {
+		    $path .= "/";
+		}
+
+		return $path;
+    }
+    
     public static function getSingleTrace($trace) {
         $msg = "\tat ";
         if(array_key_exists("file", $trace)) {
