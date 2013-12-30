@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<info>
+	<id>ocrfs</id>
+	<name>OwnCloud Replication File System</name>
+	<description>OwnCloud Replication File System</description>
+	<version>0.0.1</version>
+	<licence>AGPL</licence>
+	<author>Christian Lange</author>
+	<require>4</require>
+</info>
