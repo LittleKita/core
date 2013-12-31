@@ -124,7 +124,7 @@ class SCCollection implements StateCacheRFS {
         	    if(is_numeric($id)) {
         	        $id = $id/1;
         	    }
-    //	        error_log("insert: " . $result . " id: " . $id);
+    //	        Log::debug("insert: " . $result . " id: " . $id);
         	    $this->cache[$id] = array("fp" => null, "path" => $path, "seek" => $seek, "mode" => $mode, "local" => false, "ltime" => time());
     			return $id;
     		}

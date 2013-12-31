@@ -27,7 +27,7 @@ class SCLocal implements StateCacheRFS {
         for($i=0;$i<count($dirname);$i++) {
             $curPath .= $dirname[$i]."/";
             if(!file_exists($curPath)) {
-                error_log("checkPath-mkdir: " . $curPath);
+                Log::debug("mkdir: " . $curPath);
                 mkdir($curPath);
             }
         }
@@ -96,12 +96,12 @@ class SCLocal implements StateCacheRFS {
     }
 
     public function fopen($path,$mode,$onlyLocal = false, $data = null, $close = false, $time = null, $atime = null) {
-        error_log($this->serverId."\tSCLocal::fopen($path,$mode) datadirectory=".$this->datadirectory);
+        Log::debug("($path,$mode) datadirectory=".$this->datadirectory);
 
         \OC\tryCatch()->c($fp = fopen($this->datadirectory."/".$path, $mode));
         if(is_resource($fp)) {
             if($data !== null) {
-                error_log($this->serverId."\tfast with data(".strlen($data).") close: ".($close*1));
+                Log::debug("fast with data(".strlen($data).") close: ".($close*1));
                 if(fwrite($fp, $data) != strlen($data)) {
                     fclose($fp);
                     return false;
@@ -113,7 +113,7 @@ class SCLocal implements StateCacheRFS {
                         if($atime !== null) {
                             $args[] = $atime;
                         }
-                        error_log("touch ".print_r($args, true));
+                        Log::debug("touch ".print_r($args, true));
                         call_user_func_array("touch", $args);
                     }
                     return $res;
@@ -135,7 +135,7 @@ class SCLocal implements StateCacheRFS {
     			    if(is_numeric($id)) {
     			        $id = $id/1;
     			    }
-//			        error_log("insert: " . $result . " id: " . $id);
+//			        Log::debug("insert: " . $result . " id: " . $id);
 		    	    $this->cache[$id] = array("fp" => $fp, "path" => $path, "seek" => $seek, "mode" => $mode, "serverId" => $this->serverId, "local" => false, "ltime" => time());
         			return $id;
     			}
@@ -199,17 +199,17 @@ class SCLocal implements StateCacheRFS {
             if($atime !== null) {
                 $args[] = $atime;
             }
-            error_log("touch ".print_r($args, true));
+            Log::debug("touch ".print_r($args, true));
             call_user_func_array("touch", $args);
         }
         
-        error_log($this->serverId."\tSCLocal::fclose(".$fpinfo["path"].") datadirectory=".$this->datadirectory.", id=".$id);
+        Log::debug("(".$fpinfo["path"].") datadirectory=".$this->datadirectory.", id=".$id);
         unset($this->cache[$id]);
         return $res;
     }
     
     public function opendir($path,$onlyLocal = false) {
-        error_log($this->serverId."\tSCLocal::opendir($path) datadirectory=".$this->datadirectory);
+        Log::debug("($path) datadirectory=".$this->datadirectory);
         \OC\tryCatch()->c($fp = opendir($this->datadirectory."/".$path));
         $mode = "d";
         $seek = 0;
@@ -231,7 +231,7 @@ class SCLocal implements StateCacheRFS {
             	    if(is_numeric($id)) {
             	        $id = $id/1;
             	    }
-//			        error_log("insert: " . $result . " id: " . $id);
+//			        Log::debug("insert: " . $result . " id: " . $id);
 		    	    $this->cache[$id] = array("fp" => $fp, "path" => $path, "seek" => $seek, "mode" => $mode, "serverId" => $this->serverId, "local" => false, "ltime" => time());
         			return $id;
     			}
@@ -264,7 +264,7 @@ class SCLocal implements StateCacheRFS {
     		$query->execute(array($id,$this->serverId));
         }
         \OC\tryCatch()->c($res = closedir($fpinfo["fp"]));
-        error_log($this->serverId."\tSCLocal::closedir(".$fpinfo["path"].") datadirectory=".$this->datadirectory.", id=".$id);
+        Log::debug("(".$fpinfo["path"].") datadirectory=".$this->datadirectory.", id=".$id);
         unset($this->cache[$id]);
         return $res;
     }
@@ -283,20 +283,20 @@ class SCLocal implements StateCacheRFS {
     }
     
     public function url_stat($_path) {
-        $msg = $this->serverId."\tSCLocal::url_stat($_path) datadirectory=".$this->datadirectory;
+        $msg = "($_path) datadirectory=".$this->datadirectory;
         $path = $this->datadirectory."/".$_path;
         if(file_exists($path)) {
             $stat = stat($path);
 //            $msg .= " = ".print_r($stat, true);
-            error_log($msg);
+            Log::debug($msg);
             return $stat;
         }
-        error_log($msg." = false");//\n".Helper::getLastCallFunc());
+        Log::debug($msg." = false");//\n".Helper::getLastCallFunc());
         return false;
     }
     
     public function touch($_path, $time = null, $atime = null) {
-        $msg = $this->serverId."\tSCLocal::touch($_path, $time, $atime) datadirectory=".$this->datadirectory;
+        $msg = "($_path, $time, $atime) datadirectory=".$this->datadirectory;
         $path = $this->datadirectory."/".$_path;
 
         $args = array($path);
@@ -307,7 +307,7 @@ class SCLocal implements StateCacheRFS {
             $args[]= $atime;
         }
         \OC\tryCatch()->c($res = call_user_func_array("touch", $args));
-        error_log($msg." = ".$res);
+        Log::debug($msg." = ".$res);
         return $res;
     }
     
@@ -320,7 +320,7 @@ class SCLocal implements StateCacheRFS {
     }
 
     public function unlink($_path) {
-        error_log($this->serverId."\tSCLocal::unlink($_path) datadirectory=".$this->datadirectory);
+        Log::debug("($_path) datadirectory=".$this->datadirectory);
         $path = $this->datadirectory."/".$_path;
         if(file_exists($path)) {
             return \OC\tryCatch()->c(unlink($path));
@@ -329,7 +329,7 @@ class SCLocal implements StateCacheRFS {
     }
     
     public function rmdir($_path) {
-        error_log($this->serverId."\tSCLocal::rmdir($_path) datadirectory=".$this->datadirectory);
+        Log::debug("($_path) datadirectory=".$this->datadirectory);
         $path = $this->datadirectory."/".$_path;
         if(file_exists($path)) {
             return \OC\tryCatch()->c(rmdir($path));

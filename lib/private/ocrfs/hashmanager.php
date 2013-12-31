@@ -49,7 +49,7 @@ class HashManager implements OCRFSSync {
             }
         }
         else {
-            error_log("OCRFS $path not found");
+            Log::debug("$path not found");
         }
         return null;
     }
@@ -74,15 +74,7 @@ class HashManager implements OCRFSSync {
         if($hashes[0]["name"] != ".") {
             throw new \Exception("Write First entry is not '.'! (".$hashes[0]["name"].")");
         }
-        try {
-            usort($hashes, array($this,"hash_sort"));
-        }
-        catch(\Exception $e) {
-            echo "$dir:";
-            print_r($hashes);
-            error_log("usort exception");
-            throw $e;
-        }
+        usort($hashes, array($this,"hash_sort"));
         if($hashes[0]["name"] != ".") {
             throw new \Exception("WriteSort First entry is not '.'! (".$hashes[0]["name"].")");
         }
@@ -184,7 +176,7 @@ class HashManager implements OCRFSSync {
     }
 
     public function updateHashByPath($path, $recursive = false) {
-        error_log("check $path ".$recursive*1);
+        Log::debug("check $path ".$recursive*1);
         $path = Helper::normalizePath($path);
         $dirname = dirname($path);
         $basename = basename($path);
@@ -194,8 +186,8 @@ class HashManager implements OCRFSSync {
         if(is_file($realpath)) {
             $dirHash = $this->updateHashByDirAndFile(dirname($path), $basename);
             if($dirHash !== null) {
-                error_log("upd fhash $dirname ................................ ".$basename);
-                error_log("upd dhash $dirname ".$dirHash["hash"]." ".$dirHash["name"]);
+                Log::debug("upd fhash $dirname ................................ ".$basename);
+                Log::debug("upd dhash $dirname ".$dirHash["hash"]." ".$dirHash["name"]);
             }
             while(!$isRoot && $dirHash !== null) {
                 $basename = basename($dirname);
@@ -205,8 +197,8 @@ class HashManager implements OCRFSSync {
 
                 $dirHash = $this->updateHashByDirAndNameAndHash($dirname, $basename, $dirHash);
                 if($dirHash !== null) {
-                    error_log("upd dhash $dirname ................................ ".$basename);
-                    error_log("upd dhash $dirname ".$dirHash["hash"]." ".$dirHash["name"]);
+                    Log::debug("upd dhash $dirname ................................ ".$basename);
+                    Log::debug("upd dhash $dirname ".$dirHash["hash"]." ".$dirHash["name"]);
                 }
             }
             return null;
@@ -219,7 +211,7 @@ class HashManager implements OCRFSSync {
                     $change = true;
                     $md5 = md5("");
                     $hashes = array(array("hash" => $md5, "time" => time(), "name" => ".", "check" => true));
-                    error_log("new start $path $md5 ".$hashes[0]["name"]);
+                    Log::debug("new start $path $md5 ".$hashes[0]["name"]);
                 }
                 else {
                     $hashes[0]["check"] = true;
@@ -244,7 +236,7 @@ class HashManager implements OCRFSSync {
                             $md5 = md5_file($p);
                             $hash = array("hash" => $md5, "time" => time(), "name" => $entry, "check" => true);
                             $hashes[] = $hash;
-                            error_log("new fhash $path $md5 ".$hash["name"]);
+                            Log::debug("new fhash $path $md5 ".$hash["name"]);
                         }
                         else if(is_dir($p)) {
                             $hash = $this->getHashByDirAndName($path."/".$entry,".");
@@ -254,7 +246,7 @@ class HashManager implements OCRFSSync {
                             $hash["name"] = $entry;
                             $hash["check"] = true;
 
-                            error_log("new dhash $path ".$hash["hash"]." ".$hash["name"]);
+                            Log::debug("new dhash $path ".$hash["hash"]." ".$hash["name"]);
                             $hashes[] = $hash;
                         }
                         else {
@@ -269,7 +261,7 @@ class HashManager implements OCRFSSync {
                                 $md5 = md5_file($p);
                                 $hash = array("hash" => $md5, "time" => time(), "name" => $entry, "check" => true);
                                 $hashes[$found] = $hash;
-                                error_log("upd fhash $path $md5 ".$hash["name"]." *** ".$stat["mtime"]." ".$stat["ctime"]." > ".$hashes[$found]["time"]);
+                                Log::debug("upd fhash $path $md5 ".$hash["name"]." *** ".$stat["mtime"]." ".$stat["ctime"]." > ".$hashes[$found]["time"]);
                             }
                         }
                         else if(is_dir($p)) {
@@ -284,7 +276,7 @@ class HashManager implements OCRFSSync {
                                 $hashes[$found]["hash"] = $hash["hash"];
                                 $hashes[$found]["time"] = $hash["time"];
                                 $hashes[$found]["check"] = true;
-                                error_log("upd dhash $path ".$hash["hash"]." ".$hash["name"]);
+                                Log::debug("upd dhash $path ".$hash["hash"]." ".$hash["name"]);
                             }
                         }
                         else {
@@ -306,7 +298,7 @@ class HashManager implements OCRFSSync {
                 }
                 
                 if($change) {
-                    error_log("upd ocrfs $path");
+                    Log::debug("upd ocrfs $path");
                     return $this->writeDirectoryHashes($path, $nhashes);
                 }
                 else {

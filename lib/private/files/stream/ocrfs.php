@@ -10,6 +10,7 @@ namespace OC\Files\Stream;
 
 use OC\OCRFS\Manager;
 use OC\OCRFS\Helper;
+use OC\OCRFS\Log;
 /**
  * a stream wrappers for ownCloud's virtual filesystem
  */
@@ -78,7 +79,7 @@ class OCRFS {
 	        $this->meta = stream_get_meta_data($this->fileSource);
 	        return is_resource($this->fileSource);
 	    }
-//	    error_log("stream_open $_path $mode");
+	    Log::debug("$_path $mode");
 		$bin = strpos($mode,"b") !== false ? "b" : "";
 		
 		$this->wait = false;
@@ -158,7 +159,7 @@ class OCRFS {
 	        
 	        $this->buffer .= $data;
 	        if(strlen($this->buffer) >= $post_max_size) {
-	            error_log("buffer full ".strlen($this->buffer)." >= ".$post_max_size);
+	            Log::debug("buffer full ".strlen($this->buffer)." >= ".$post_max_size);
 	            $this->sendBuffer();
 	        }
 	        return strlen($data);
@@ -287,7 +288,7 @@ class OCRFS {
 		$path = $this->getRealPath($path);
 	    $this->sc = $this->getCollection(false);
 	    $res = $this->sc->unlink($path);
-	    error_log("OCRFS::unlink($path) = ".($res ? "true" : "false"));
+	    Log::debug("$path = ".($res ? "true" : "false"));
 		return $res;
 	}
 
@@ -325,7 +326,7 @@ class OCRFS {
 		$path = $this->getRealPath($path);
 		$this->sc = $this->getCollection(false);
 		$res = $this->sc->rmdir($path);
-	    error_log("OCRFS::rmdir($path) = ".($res ? "true" : "false"));
+	    Log::debug("$path = ".($res ? "true" : "false"));
 		return $res;
 	}
 }

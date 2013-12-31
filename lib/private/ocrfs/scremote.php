@@ -68,7 +68,7 @@ class SCRemote implements StateCacheRFS {
 			$request = "POST ".$url["path"]."/index.php/apps/ocrfs/$operation";
 			$request = str_replace("/"."/","/",$request);
 			$request = "$request$query HTTP/1.0";
-			error_log($this->serverId."\tRequest: ".$url["host"].": ".trim($request));
+			Log::debug($this->serverId."\tRequest: ".$url["host"].": ".trim($request));
 //			error_log(print_r($arguments, true));
 			fwrite($fp,"$request\r\n");
 			fwrite($fp,"Host: ".$url["host"]."\r\n");
@@ -78,7 +78,7 @@ class SCRemote implements StateCacheRFS {
 			fwrite($fp,"\r\n");
 			if($data !== NULL) {
 				fwrite($fp,$data);
-				error_log($this->serverId."\tData(".strlen($data).")");
+				Log::debug($this->serverId."\tData(".strlen($data).")");
 			}
 
             $http = 0;
@@ -87,7 +87,7 @@ class SCRemote implements StateCacheRFS {
 			$data = "";
 			while(!feof($fp)) {
 				$line = fgets($fp,1024);
-//				error_log($this->serverId."\tHeader: ".trim($line));
+//				Log::debug($this->serverId."\tHeader: ".trim($line));
 				if($http === 0) {
 				    list($null,$http) = explode(" ", $line);
 				}
@@ -138,17 +138,17 @@ class SCRemote implements StateCacheRFS {
     		    		    if(strlen($data) > 100) {
     		    		        $data = substr($data,0,97)."...";
     		    		    }
-    	    			    error_log($msg." http: $http, Unknonw data($contentLength): ".$data);
+    	    			    Log::debug($msg." http: $http, Unknonw data($contentLength): ".$data);
         				    throw new \Exception($data);
         				}
 				    }
 				    else {
-	    			    error_log($msg." http: $http, Unknonw data($contentLength)");
+	    			    Log::debug($msg." http: $http, Unknonw data($contentLength)");
     				    throw new \Exception($data);
 				    }
 				    
 				    if($http != "200") {
-				        error_log($msg." http: $http");
+				        Log::debug($msg." http: $http");
     				    throw new \Exception("http: ".$http);
 				    }
 
@@ -156,11 +156,11 @@ class SCRemote implements StateCacheRFS {
 				}
 			}
 			fclose($fp);
-			error_log($msg);
+			Log::debug($msg);
 			return $data;
 		}
 		else {
-		    error_log($msg.": ERR");
+		    Log::debug($msg.": ERR");
 			return false;
 		}
 	}

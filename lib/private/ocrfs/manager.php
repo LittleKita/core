@@ -9,6 +9,7 @@ class Manager {
 	protected $replicationServerId = null;
 	
 	protected $replicationServer = null;
+	protected $replicationServerFull = null;
     
 	protected $localServer = null;
 	
@@ -28,10 +29,13 @@ class Manager {
 		$query = \OCP\DB::prepare("SELECT * FROM *PREFIX*server WHERE disabled!=1");
 		$result = $query->execute(array());
 		$this->replicationServer = array();
+		$this->replicationServerFull = array();
 		while ($row = $result->fetchRow()) {
+		    $scremote = new SCRemote($row["server_id"], $row["url"], $row["type"], $row["secret"], $this->replicationServerId);
 		    if($row["server_id"] != $this->replicationServerId) {
-    		    $this->replicationServer[] = new SCRemote($row["server_id"], $row["url"], $row["type"], $row["secret"], $this->replicationServerId);
+    		    $this->replicationServer[] = $scremote;
 		    }
+		    $this->replicationServerFull[] = $scremote;
     	}
     	
     	// Alle fileHandles die aelter als 60 Sekunden sind loeschen:
@@ -45,11 +49,15 @@ class Manager {
         	}
         	
         	if($count == 0) {
-        	    error_log("TRUNCATE freplicate");
+        	    Log::debug("TRUNCATE freplicate");
         	    $query = \OCP\DB::prepare("TRUNCATE TABLE *PREFIX*freplicate");
         	    $query->execute(array());
         	}
     	}
+    }
+    
+    public function getServerList() {
+        return $this->replicationServerFull;
     }
     
     public function getDataDirectory() {
@@ -58,6 +66,10 @@ class Manager {
     
     public function getReplicationServerId() {
         return $this->replicationServerId;
+    }
+    
+    public static function hasInstance() {
+        return self::$instance !== null;
     }
     
     public static function getInstance() {
