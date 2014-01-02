@@ -113,7 +113,6 @@ class SCLocal implements StateCacheRFS {
                         if($atime !== null) {
                             $args[] = $atime;
                         }
-                        Log::debug("touch ".print_r($args, true));
                         call_user_func_array("touch", $args);
                     }
                     return $res;
@@ -199,11 +198,14 @@ class SCLocal implements StateCacheRFS {
             if($atime !== null) {
                 $args[] = $atime;
             }
-            Log::debug("touch ".print_r($args, true));
             call_user_func_array("touch", $args);
         }
         
         Log::debug("(".$fpinfo["path"].") datadirectory=".$this->datadirectory.", id=".$id);
+        $bin = strpos($row["mode"],"b") !== false ? "b" : "";
+        if($row["mode"] != "r$bin") {
+            HashManager::getInstance()->updateHashByPath($fpinfo["path"]);
+        }
         unset($this->cache[$id]);
         return $res;
     }
@@ -243,7 +245,7 @@ class SCLocal implements StateCacheRFS {
     public function readdir($id) {
         $fpinfo = $this->getFPInfo($id);
         $seekp = 1;
-        while(($res = readdir($fpinfo["fp"])) === ".ocrfs") {
+        while(($res = readdir($fpinfo["fp"])) === ".ocrfs" || $res === ".ocrfsTrash") {
             $seekp++;
         }
         $this->updateSeek($id,$this->cache[$id]["seek"]+$seekp);
@@ -283,6 +285,10 @@ class SCLocal implements StateCacheRFS {
     }
     
     public function url_stat($_path) {
+        if($_path == "//cnotzon/files") {
+//            error_log(print_r($_SERVER, true));
+            exit;
+        }
         $msg = "($_path) datadirectory=".$this->datadirectory;
         $path = $this->datadirectory."/".$_path;
         if(file_exists($path)) {
@@ -311,10 +317,25 @@ class SCLocal implements StateCacheRFS {
         return $res;
     }
     
-    public function mkdir($_path) {
+    public function mkdir($_path, $time = null, $atime = null) {
         $path = $this->datadirectory."/".$_path;
         if(!file_exists($path)) {
-            return \OC\tryCatch()->c(mkdir($path));
+            $ok = \OC\tryCatch()->c(mkdir($path));
+            if($ok) {
+                if($time !== null) {
+                    $args = array($path,$time);
+                    if($atime !== null) {
+                        $args[] = $atime;
+                    }
+                    
+                    clearstatcache(true, $path);
+                    call_user_func_array("touch", $args);
+                }
+                
+                $dirname = dirname($_path);
+                HashManager::getInstance()->updateHashByPath($dirname);
+            }
+            return $ok;
         }
         return false;
     }
@@ -323,17 +344,66 @@ class SCLocal implements StateCacheRFS {
         Log::debug("($_path) datadirectory=".$this->datadirectory);
         $path = $this->datadirectory."/".$_path;
         if(file_exists($path)) {
-            return \OC\tryCatch()->c(unlink($path));
+            $md5 = md5(microtime()."");
+            mkdir($this->datadirectory."/.ocrfsTrash/".$md5);
+            $ok = \OC\tryCatch()->c(rename($path, $this->datadirectory."/.ocrfsTrash/".$md5."/".basename($path)));
+            if($ok) {
+                HashManager::getInstance()->updateHashByPath($_path);
+            }
+            return $ok;
+//            return \OC\tryCatch()->c(unlink($path));
         }
         return false;
     }
     
-    public function rmdir($_path) {
+    public function rmdir($_path, $recursive = false) {
         Log::debug("($_path) datadirectory=".$this->datadirectory);
         $path = $this->datadirectory."/".$_path;
         if(file_exists($path)) {
-            return \OC\tryCatch()->c(rmdir($path));
+            if($_path != "/" && $recursive) {
+                $md5 = md5(microtime()."");
+                mkdir($this->datadirectory."/.ocrfsTrash/".$md5);
+                $ok = \OC\tryCatch()->c(rename($path, $this->datadirectory."/.ocrfsTrash/".$md5."/".basename($path)));
+                if($ok) {
+                    HashManager::getInstance()->updateHashByPath($_path);
+                }
+                return $ok;
+                
+                /*
+                $paths = array($path);
+                for($i=0;$i<count($paths);$i++) {
+                    $dir = dir($this->datadirectory."/".$paths[$i]);
+                    if(is_object($dir)) {
+                        while(($entry = $dir->read())) {
+                            if($entry == "." || $entry == "..") continue;
+                            $p = $this->datadirectory."/".$paths[$i]."/".$entry;
+                            if(is_dir($p)) {
+                                $paths[] = $paths[$i]."/".$entry;
+                            }
+                            else {
+                                unlink($p);
+                            }
+                        }
+                        $dir->close();
+                        rmdir($this->datadirectory."/".$paths[$i]);
+                    }
+                }
+                
+                return \OC\tryCatch()->c(rmdir($path));
+                */
+            }
+            else {
+                return \OC\tryCatch()->c(rmdir($path));
+            }
         }
         return false;
+    }
+    
+    public function remove($_path, $recursive = false) {
+        $path = $this->datadirectory."/".$_path;
+        if(is_dir($path)) {
+            return $this->rmdir($_path);
+        }
+        return $this->unlink($_path);
     }
 };

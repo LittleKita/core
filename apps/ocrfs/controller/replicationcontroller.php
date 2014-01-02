@@ -26,6 +26,9 @@ namespace OCA\OCRFS\Controller;
 use OCA\AppFramework\Controller\Controller;
 use OCA\OCRFS\PlainResponse;
 use OC\OCRFS\Manager;
+use OC\OCRFS\Log;
+use OC\OCRFS\HashManager;
+use OC\OCRFS\BackgroudSync;
 use OCA\AppFramework\Http\JSONResponse;
 
 class ReplicationController extends Controller {
@@ -41,6 +44,126 @@ class ReplicationController extends Controller {
 		parent::__construct($api, $request);
 		$this->itemMapper = $itemMapper;
 	}
+
+	/**
+	 * ATTENTION!!!
+	 * The following comments turn off security checks
+	 * Please look up their meaning in the documentation!
+	 *
+	 * @CSRFExemption
+	 * @IsAdminExemption
+	 * @IsSubAdminExemption
+	 * @IsLoggedInExemption
+	 *
+	 * @brief renders the index page
+	 * @return an instance of a Response implementation
+	 */
+    public function startBackgroudSync() {
+        if(Manager::getInstance()->isClient()) {
+            throw new \Exception("Is Client.");
+        }
+
+        ignore_user_abort(true);
+
+        header("Content-type: singletype");
+        echo "n";
+        ob_implicit_flush(true);
+        flush();
+        
+//        sleep(5);
+
+        $bgs = new BackgroudSync(null);
+        $bgs->startBackgroudSync();
+        exit;
+    }
+    
+	/**
+	 * ATTENTION!!!
+	 * The following comments turn off security checks
+	 * Please look up their meaning in the documentation!
+	 *
+	 * @CSRFExemption
+	 * @IsAdminExemption
+	 * @IsSubAdminExemption
+	 * @IsLoggedInExemption
+	 *
+	 * @brief renders the index page
+	 * @return an instance of a Response implementation
+	 */
+    public function getHashList() {
+        if(Manager::getInstance()->isClient()) {
+            throw new \Exception("Is Client.");
+        }
+
+        $path = $this->params('path');
+        $list = HashManager::getInstance()->getHashList($path);
+        if($list === null && $path === "/") {
+            HashManager::getInstance()->updateHashByPath("/");
+        }
+        return new PlainResponse($list);
+    }
+    
+	/**
+	 * ATTENTION!!!
+	 * The following comments turn off security checks
+	 * Please look up their meaning in the documentation!
+	 *
+	 * @CSRFExemption
+	 * @IsAdminExemption
+	 * @IsSubAdminExemption
+	 * @IsLoggedInExemption
+	 *
+	 * @brief renders the index page
+	 * @return an instance of a Response implementation
+	 */
+    public function syncFile() {
+        if(Manager::getInstance()->isClient()) {
+            throw new \Exception("Is Client.");
+        }
+
+        $path = $this->params('path');
+        $time = $this->params('time');
+        $atime = $this->params('atime');
+        $serverId = $this->params('serverId');
+        
+        $remote = Manager::getInstance()->getServer($serverId);
+        $local = Manager::getInstance()->getLocal();
+        
+        if($remote->getServerId() != 1 || $local->getServerId() != 2) {
+            throw new \Exception("Test");
+        }
+        
+        if(($src = $remote->fopen($path,"r")) > 0) {
+            if(($dst = $local->fopen($path,"w")) > 0) {
+                while(true) {
+                    $tmp = $remote->fread($src,1024*1024);
+                    if($tmp === null || $tmp === false || $tmp === "") {
+                        break;
+                    }
+                    $local->fwrite($dst, $tmp);
+                }
+                $remote->fclose($src);
+            }
+            else {
+                return new PlainResponse(false);
+            }
+
+            $args = array($dst);
+            if($time !== null) {
+                $args[] = $time;
+                if($atime !== null) {
+                    $args[] = $atime;
+                }
+            }
+            call_user_func_array(array($local,"fclose"), $args);
+        }
+        else {
+            return new PlainResponse(false);
+        }
+
+        return new PlainResponse(true);
+    }
+    
 
 	/**
 	 * ATTENTION!!!
@@ -320,6 +443,8 @@ class ReplicationController extends Controller {
 	 */
 	public function mkdir() {
 		$path = $this->params('path');
+		$time = $this->params('time');
+		$atime = $this->params('atime');
 		$rm = $this->params('rm');
 		
         if(Manager::getInstance()->isClient()) {
@@ -334,7 +459,15 @@ class ReplicationController extends Controller {
         }
 
 		$sc->checkPath($path);
-		$res = $sc->mkdir($path);
+		$args = array($path);
+		if($time !== null) {
+		    $args[] = $time;
+		    if($atime !== null) {
+		        $args[] = $atime;
+		    }
+		}
+
+		$res = call_user_func_array(array($sc,"mkdir"), $args);
 		return new PlainResponse($res);
 	}
 	
@@ -387,6 +520,7 @@ class ReplicationController extends Controller {
 	public function rmdir() {
 		$path = $this->params('path');
 		$rm = $this->params('rm');
+		$recursive = $this->params('recursive');
 		
         if(Manager::getInstance()->isClient()) {
             throw new \Exception("Is Client.");
@@ -400,7 +534,11 @@ class ReplicationController extends Controller {
         }
 
 		$sc->checkPath($path);
-		$res = $sc->rmdir($path);
+		$args = array($path);
+		if($recursiv) {
+		    $args[] = true;
+		}
+		$res = call_user_func_array(array($sc,"rmdir"), $args);
 		return new PlainResponse($res);
 	}
 

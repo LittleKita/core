@@ -17,6 +17,25 @@ class HashManager implements OCRFSSync {
         return self::$instance;
     }
     
+    public function getHashList($dir) {
+        $path = $this->dataDirectory."/".Helper::normalizePath($dir)."/.ocrfs";
+        $fp = @fopen($path,"r");
+        $data = null;
+        if(is_resource($fp)) {
+            $data = "";
+            while(!feof($fp)) {
+                $data .= fread($fp,1024);
+            }
+            fclose($fp);
+        }
+        return $data;
+    }
+    
+    public static function createEntryByLine($line) {
+        list($etype,$hash,$time,$ename) = explode("\t", str_replace("\n","",$line), 4);
+        return array("hash" => $hash, "type" => $etype, "time" => $time, "name" => $ename, "check" => false);
+    }
+    
     protected function getHashByDirAndName($dir, $name, $all = false) {
         $path = $this->dataDirectory."/".$dir."/.ocrfs";
         if(is_readable($path)) {
@@ -70,7 +89,8 @@ class HashManager implements OCRFSSync {
     }
     
     protected function writeDirectoryHashes($dir, &$hashes) {
-        $p = $this->dataDirectory."/".$dir."/.ocrfs";
+        $dp = $this->dataDirectory."/".$dir;
+        $p = $dp."/.ocrfs";
         if($hashes[0]["name"] != ".") {
             throw new \Exception("Write First entry is not '.'! (".$hashes[0]["name"].")");
         }
@@ -79,6 +99,8 @@ class HashManager implements OCRFSSync {
             throw new \Exception("WriteSort First entry is not '.'! (".$hashes[0]["name"].")");
         }
 
+        $statTime = $this->getStatTime($dir);
+
         $fp = fopen($p, "w");
         if(is_resource($fp)) {
             // Create SUM-HASH for alle Children:
@@ -86,13 +108,13 @@ class HashManager implements OCRFSSync {
                 $md5 = "";
                 for($i=0;$i<count($hashes);$i++) {
                     // Only existing Directories and Files
-                    if($hashes[$i] == "d" || $hashes[$i] == "f") {
+                    if($hashes[$i]["type"] == "d" || $hashes[$i]["type"] == "f") {
                         $md5 .= $hashes[$i]["hash"];
                     }
                 }
                 $md5 = md5($md5);
                 $hashes[0]["hash"] = $md5;
-                $hashes[0]["time"] = time();
+                $hashes[0]["time"] = $statTime;
             }
             
             // Write hashes to .ocrfs File
@@ -102,7 +124,12 @@ class HashManager implements OCRFSSync {
                     fwrite($fp, "\n");
                 }
             }
+            fflush($fp);
             fclose($fp);
+
+            touch($p, $statTime, $statTime);
+            touch($dp, $statTime, $statTime);
+
             return $hashes[0];
         }
         return null;
@@ -144,15 +171,26 @@ class HashManager implements OCRFSSync {
         if(file_exists($this->dataDirectory."/".$dir."/".$name)) {
             $md5 = md5_file($this->dataDirectory."/".$dir."/".$name);
             $type = "f";
+            $time = $this->getStatTime($dir."/".$name);
         }
         else {
             $md5 = null;
             $type = "r";
+            $time = time();
+            throw new \Exception("Unimplemented");
         }
         
-        $hash = array("hash" => $md5, "type" => $type, "time" => time(), "name" => $name);
+        $hash = array("hash" => $md5, "type" => $type, "time" => $time, "name" => $name);
 
         return $this->updateHashByDirAndNameAndHash($dir, $name, $hash);
+    }
+    
+    protected function getStatTime($path) {
+        $path = $this->dataDirectory."/".Helper::normalizePath($path);
+        clearstatcache(true, $path);
+        $stat = stat($path);
+        Log::debug("getStatTime $path ".date("r", $stat["mtime"])." ".date("r", $stat["atime"]). " ".$stat["mtime"]." ".$stat["atime"]);
+        return $stat["mtime"];
     }
     
     public function getHashByPath($path) {
@@ -198,7 +236,7 @@ class HashManager implements OCRFSSync {
             }
         }
     }
-
+    
     public function updateHashByPath($path, $recursive = false) {
         Log::debug("check $path ".$recursive*1);
         $path = Helper::normalizePath($path);
@@ -232,9 +270,10 @@ class HashManager implements OCRFSSync {
             $dir = dir($realpath);
             if(is_object($dir)) {
                 if($hashes === null) {
+                    $statTime = $this->getStatTime($path);
                     $change = true;
                     $md5 = md5("");
-                    $hashes = array(array("hash" => $md5, "type" => "s", "time" => time(), "name" => ".", "check" => true));
+                    $hashes = array(array("hash" => $md5, "type" => "s", "time" => $statTime, "name" => ".", "check" => true));
                     Log::debug("new start $path $md5 ".$hashes[0]["name"]);
                 }
                 else {
@@ -243,7 +282,7 @@ class HashManager implements OCRFSSync {
                 }
                 
                 while(($entry = $dir->read()) !== false) {
-                    if($entry == "." || $entry == ".." || $entry == ".ocrfs") continue;
+                    if($entry == "." || $entry == ".." || $entry == ".ocrfs" || $entry == ".ocrfsTrash") continue;
 
                     $found = false;
                     for($i=0;$i<count($hashes);$i++) {
@@ -254,13 +293,17 @@ class HashManager implements OCRFSSync {
                         }
                     }
                     $p = $realpath."/".$entry;
+                    $statTime = $this->getStatTime($path."/".$entry);
                     if($found === false) {
                         $change = true;
                         if(is_file($p)) {
-                            $md5 = md5_file($p);
-                            $hash = array("hash" => $md5, "type" => "f", "time" => time(), "name" => $entry, "check" => true);
-                            $hashes[] = $hash;
-                            Log::debug("new fhash $path $md5 ".$hash["name"]);
+                            // No root files include!
+                            if($path !== "/") {
+                                $md5 = md5_file($p);
+                                $hash = array("hash" => $md5, "type" => "f", "time" => $statTime, "name" => $entry, "check" => true);
+                                $hashes[] = $hash;
+                                Log::debug("new fhash $path $md5 ".$hash["name"]);
+                            }
                         }
                         else if(is_dir($p)) {
                             $hash = $this->getHashByDirAndName($path."/".$entry,".");
@@ -270,6 +313,7 @@ class HashManager implements OCRFSSync {
                             $hash["type"] = "d";
                             $hash["name"] = $entry;
                             $hash["check"] = true;
+                            $hash["time"] = $statTime;
 
                             Log::debug("new dhash $path ".$hash["hash"]." ".$hash["name"]);
                             $hashes[] = $hash;
@@ -280,13 +324,12 @@ class HashManager implements OCRFSSync {
                     }
                     else {
                         if(is_file($p)) {
-                            $stat = stat($p);
-                            if($stat["mtime"] > $hashes[$found]["time"] || $stat["ctime"] > $hashes[$found]["time"] || $hashes[$found]["type"] == "r") {
+                            if($statTime > $hashes[$found]["time"] || $hashes[$found]["type"] == "r") {
                                 $change = true;
                                 $md5 = md5_file($p);
-                                $hash = array("hash" => $md5, "type" => "f", "time" => time(), "name" => $entry, "check" => true);
+                                $hash = array("hash" => $md5, "type" => "f", "time" => $statTime, "name" => $entry, "check" => true);
                                 $hashes[$found] = $hash;
-                                Log::debug("upd fhash $path $md5 ".$hash["name"]." *** ".$stat["mtime"]." ".$stat["ctime"]." > ".$hashes[$found]["time"]);
+                                Log::debug("upd fhash $path $md5 ".$hash["name"]." *** ".$statTime." > ".$hashes[$found]["time"]);
                             }
                         }
                         else if(is_dir($p)) {
@@ -314,15 +357,16 @@ class HashManager implements OCRFSSync {
                 $dir->close();
                 
                 // Are dir-entries deleted?
+                $statTime = $this->getStatTime($path);
                 $nhashes = array();
                 for($i=0;$i<count($hashes);$i++) {
                     if($hashes[$i]["check"]) {
                         $nhashes[] = $hashes[$i];
                     }
-                    else {
+                    else if($hashes[$i]["type"] != "r") {
                         $change = true;
                         $hashes[$i]["type"] = "r";
-                        $hashes[$i]["time"] = time();
+                        $hashes[$i]["time"] = $statTime;
                         $nhashes[] = $hashes[$i];
                         Log::debug("upd rhash $path ".$hashes[$i]["hash"]." ".$hashes[$i]["name"]);
                     }

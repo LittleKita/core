@@ -20,9 +20,35 @@ if(getcwd() == dirname(__FILE__)) {
 }
 include("lib/base.php");
 
+function removeAllOCRFS() {
+    $path = array("./");
+    for($i=0;$i<count($path);$i++) {
+        $p = $path[$i]."/.ocrfs";
+        if(file_exists($p)) {
+            Log::debug("UNLINK " . $p);
+            unlink($p);
+        }
+
+        $dir = dir($path[$i]);
+        if(is_object($dir)) {
+            while(($entry = $dir->read()) !== false) {
+                if($entry == "." || $entry == "..") continue;
+                $p = $path[$i]."/".$entry;
+                if(is_dir($p)) {
+                    $path[] = $p;
+                }
+            }
+            $dir->close();
+        }
+    }
+}
+
+
 $hm = \OC\OCRFS\HashManager::getInstance();
 
-//$hm->clearOCRFS();
+removeAllOCRFS();
+$hm->clearOCRFS();
+
 $fp = fopen("data/christian.lange/files/test","w");
 mt_srand(microtime() * 1000000);
 fwrite($fp, mt_rand());
@@ -31,8 +57,8 @@ fclose($fp);
 touch("data/christian.lange/files/test");
 //$hm->updateHashByPath("/christian.lange/files/test");
 */
-$hm->updateHashByPath("/", true);
-//$hm->updateHashByPath("/");
+//$hm->updateHashByPath("/", true);
+$hm->updateHashByPath("/");
 
 Log::debug("EOF");
 ?>

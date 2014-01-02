@@ -24,8 +24,10 @@ interface StateCacheRFS {
     public function url_stat($path);
     
     public function touch($path, $time = null, $atime = null);
-    public function mkdir($path);
+    public function mkdir($path, $time = null, $atime = null);
 
     public function unlink($path);
-    public function rmdir($path);
+    public function rmdir($path, $recursive = false);
+    
+    public function remove($path, $recursive = false);
 };

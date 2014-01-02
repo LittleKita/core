@@ -94,7 +94,7 @@ try {
 		}
 
 		// Create a lock file
-		touch(TemporaryCronClass::$lockfile);
+		_touch(TemporaryCronClass::$lockfile);
 
 		// Work
 		$jobList = new \OC\BackgroundJob\JobList();

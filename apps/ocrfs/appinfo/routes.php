@@ -128,3 +128,21 @@ $this->create('ocrfs_closedir', '/closedir')->action(
 		App::main('ReplicationController', 'closedir', $params, new DIContainer());
 	}
 );
+
+$this->create('ocrfs_backgroudsync', '/backgroudsync')->action(
+	function($params){
+		App::main('ReplicationController', 'startBackgroudSync', $params, new DIContainer());
+	}
+);
+
+$this->create('ocrfs_hashlist', '/hashlist')->action(
+	function($params){
+		App::main('ReplicationController', 'getHashList', $params, new DIContainer());
+	}
+);
+
+$this->create('ocrfs_syncfile', '/syncfile')->action(
+	function($params){
+		App::main('ReplicationController', 'syncFile', $params, new DIContainer());
+	}
+);

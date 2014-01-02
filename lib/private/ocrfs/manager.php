@@ -84,6 +84,18 @@ class Manager {
         return $this->localServer;
     }
     
+    public function getServer($id) {
+        if($this->replicationServerId != $id) {
+            foreach($this->replicationServerFull AS $server) {
+                if($server->getServerId() === $id) {
+                    return $server;
+                }
+            }
+        }
+        
+        throw new \Exception("Server '$id' not found.");
+    }
+    
     public function isMaster() {
         return $this->replicationType == "master";
     }
@@ -156,6 +168,6 @@ class Manager {
             }
         }
         
-        throw new Exception("FP-ID not found. (id:".$id.")");
+        throw new \Exception("FP-ID not found. (id:".$id.")");
     }
 };

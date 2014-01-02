@@ -196,7 +196,7 @@ class SCCollection implements StateCacheRFS {
         return array_pop($this->callAll($this->collection,"touch", $args));
     }
 
-    public function mkdir($path) {
+    public function mkdir($path, $time = null, $atime = null) {
         return $this->callAll($this->collection,"mkdir", func_get_args(), true);
     }
     
@@ -204,7 +204,11 @@ class SCCollection implements StateCacheRFS {
         return $this->callAll($this->collection,"unlink", func_get_args(), true);
     }
 
-    public function rmdir($path) {
+    public function rmdir($path, $recursive = false) {
         return $this->callAll($this->collection,"rmdir", func_get_args(), true);
+    }
+    
+    public function remove($path, $recursive = false) {
+        return $this->callAll($this->collection,"remove", func_get_args(), true);
     }
 };

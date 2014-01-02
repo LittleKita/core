@@ -32,6 +32,10 @@ class SCRemote implements StateCacheRFS {
         return $this->serverId;
     }
     
+    public function getUrl() {
+        return $this->url;
+    }
+    
     public function checkPath($path) {
     }
 
@@ -39,7 +43,7 @@ class SCRemote implements StateCacheRFS {
         return $this->type;
     }
 
-    public function callRemoteServer($operation,$arguments = array(),$data = NULL) {
+    public function callRemoteServer($operation,$arguments = array(),$data = NULL, $closeBeforeResponse = false) {
         $msg = "SCRemote::callRemoteServer($operation,".serialize($arguments).") serverId=".$this->serverId;
 		$url = parse_url($this->url);
 		$errno = NULL;
@@ -80,6 +84,10 @@ class SCRemote implements StateCacheRFS {
 				fwrite($fp,$data);
 				Log::debug($this->serverId."\tData(".strlen($data).")");
 			}
+			
+			if($closeBeforeResponse) {
+			    return null;
+			}
 
             $http = 0;
 			$contentType = "";
@@ -110,7 +118,7 @@ class SCRemote implements StateCacheRFS {
 				        }
 
         				if(strpos($contentType,"application/octet-stream") !== false) {
-        			        $msg .= ": DATA";
+        			        $msg .= ": DATA(".strlen($data).")";
     				    }
     				    else if(strpos($contentType,"application/json") !== false) {
     			    	    $data = json_decode($data, true);
@@ -164,6 +172,14 @@ class SCRemote implements StateCacheRFS {
 			return false;
 		}
 	}
+	
+    public function startBackgroudSync() {
+        return $this->callRemoteServer("backgroudsync", array(), null, true);
+    }
+    
+    public function getHashList($path) {
+        return $this->callRemoteServer("hashlist", array("path" => $path));
+    }
 
     public function fopen($path,$mode,$onlyLocal = false, $data = null, $close = false, $time = null, $atime = null) {
         $args = array("path" => $path, "mode" => $mode);
@@ -250,15 +266,45 @@ class SCRemote implements StateCacheRFS {
         return $this->callRemoteServer("touch", $args);
     }
 
-    public function mkdir($path) {
-        return $this->callRemoteServer("mkdir", array("path" => $path));
+    public function mkdir($path, $time = null, $atime = null) {
+        $args = array("path" => $path);
+        if($time !== null) {
+            $args["time"] = $time;
+            if($atime != null) {
+                $args["atime"] = $atime;
+            }
+        }
+        return $this->callRemoteServer("mkdir", $args);
     }
     
     public function unlink($path) {
         return $this->callRemoteServer("unlink", array("path" => $path));
     }
 
-    public function rmdir($path) {
-        return $this->callRemoteServer("rmdir", array("path" => $path));
+    public function rmdir($path, $recursive = false) {
+        $args = array("path" => $path);
+        if($recursive) {
+            $args["recursive"] = true;
+        }
+        return $this->callRemoteServer("rmdir", $args);
+    }
+    
+    public function remove($path, $recursive = false) {
+        $args = array("path" => $path);
+        if($recursive) {
+            $args["recursive"] = true;
+        }
+        return $this->callRemoteServer("remove", $args);
+    }
+    
+    public function syncFile($path, $serverId, $time = null, $atime = null) {
+        $args = array("path" => $path, "serverId" => $serverId);
+        if($time !== null) {
+            $args["time"] = $time;
+            if($atime !== null) {
+                $args["atime"] = $atime;
+            }
+        }
+        return $this->callRemoteServer("syncfile", array("path" => $path, "time" => $time, "serverId" => $serverId));
     }
 };
